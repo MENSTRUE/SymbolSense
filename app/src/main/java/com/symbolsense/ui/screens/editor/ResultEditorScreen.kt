@@ -52,10 +52,8 @@ fun ResultEditorScreen(
     result: ScanResult,
     onBack: () -> Unit,
     onShare: () -> Unit,
-    onEditManual: () -> Unit,
     onOpenHistory: () -> Unit,
-    onExport: () -> Unit,
-    onScanLagi: () -> Unit
+    onExport: () -> Unit
 ) {
     var tab by remember { mutableStateOf(0) }
     var copied by remember { mutableStateOf(false) }
@@ -112,15 +110,14 @@ fun ResultEditorScreen(
                     Text(result.latexOrCode, fontFamily = SymbolMono, color = Color.White.copy(alpha = 0.80f), modifier = Modifier.fillMaxWidth().padding(14.dp), style = MaterialTheme.typography.bodyMedium)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("Edit kode untuk memperbaiki simbol yang dikenali sebelum mengekspor.", style = MaterialTheme.typography.bodySmall, color = TextTertiaryLight)
+                Text("Kode hasil pengenalan. Salin jika ingin digunakan di aplikasi lain.", style = MaterialTheme.typography.bodySmall, color = TextTertiaryLight)
             }
         }
 
         HorizontalDivider(color = BorderLight)
         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryActionButton("Edit", onClick = onEditManual, modifier = Modifier.weight(1f))
             SecondaryActionButton("Simpan", onClick = onOpenHistory, modifier = Modifier.weight(1f))
-            androidx.compose.material3.Button(onClick = onExport, modifier = Modifier.weight(1.35f).height(46.dp), shape = MaterialTheme.shapes.medium, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = IndigoPrimary), elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(0.dp)) {
+            androidx.compose.material3.Button(onClick = onExport, modifier = Modifier.weight(1f).height(46.dp), shape = MaterialTheme.shapes.medium, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = IndigoPrimary), elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(0.dp)) {
                 Text("Ekspor")
             }
         }

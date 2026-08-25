@@ -140,9 +140,6 @@ fun SymbolSenseNavGraph(
             DetectionResultScreen(
                 symbols = SampleData.detectedSymbols,
                 onBack = { navController.popBackStack() },
-                onEdit = {
-                    navController.navigate(Screen.Editor.build(SampleData.mathResult.id))
-                },
                 onViewStructuredResult = {
                     navController.navigate(Screen.Editor.build(SampleData.mathResult.id))
                 }
@@ -166,7 +163,6 @@ fun SymbolSenseNavGraph(
                     result = result,
                     onBack = { navController.popBackStack() },
                     onShare = { showExport = true },
-                    onEditManual = { },
                     onOpenHistory = {
                         historyViewModel.saveScan(result) {
                             navController.navigate(Screen.History.route) {
@@ -174,8 +170,7 @@ fun SymbolSenseNavGraph(
                             }
                         }
                     },
-                    onExport = { showExport = true },
-                    onScanLagi = { navController.navigate(Screen.Camera.route) }
+                    onExport = { showExport = true }
                 )
 
                 if (showExport) {
@@ -220,9 +215,6 @@ fun SymbolSenseNavGraph(
                         historyViewModel.deleteScan(result.id) {
                             navController.popBackStack()
                         }
-                    },
-                    onEdit = {
-                        navController.navigate(Screen.Editor.build(result.id))
                     },
                     onExport = {
                         navController.navigate(Screen.Editor.build(result.id))

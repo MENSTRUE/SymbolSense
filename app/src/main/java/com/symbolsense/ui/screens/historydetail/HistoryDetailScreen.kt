@@ -27,7 +27,6 @@ import com.symbolsense.ui.components.AppTopBar
 import com.symbolsense.ui.components.ConfidenceText
 import com.symbolsense.ui.components.GlyphTile
 import com.symbolsense.ui.components.SDivider
-import com.symbolsense.ui.components.SecondaryActionButton
 import com.symbolsense.ui.components.SectionLabel
 import com.symbolsense.ui.components.domainCodeLabel
 import com.symbolsense.ui.theme.CodeBlack
@@ -39,7 +38,6 @@ fun HistoryDetailScreen(
     result: ScanResult,
     onBack: () -> Unit,
     onDelete: () -> Unit,
-    onEdit: () -> Unit,
     onExport: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -73,7 +71,6 @@ fun HistoryDetailScreen(
         SDivider()
         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Hapus") }
-            SecondaryActionButton("Edit", onEdit, Modifier.weight(1f))
             androidx.compose.material3.Button(onClick = onExport, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(0.dp)) { Text("Ekspor") }
         }
     }

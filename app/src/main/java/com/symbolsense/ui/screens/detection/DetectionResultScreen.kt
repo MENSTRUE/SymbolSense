@@ -1,7 +1,6 @@
 package com.symbolsense.ui.screens.detection
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,7 +38,6 @@ import com.symbolsense.ui.theme.TextTertiaryLight
 fun DetectionResultScreen(
     symbols: List<DetectedSymbol>,
     onBack: () -> Unit,
-    onEdit: () -> Unit,
     onViewStructuredResult: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -76,15 +71,6 @@ fun DetectionResultScreen(
                         if (symbol.confidence < 0.70f) Text("Perlu ditinjau", style = MaterialTheme.typography.bodySmall, color = AmberWarning)
                     }
                     ConfidenceText(symbol.confidence)
-                }
-            }
-            item {
-                SDivider()
-                Row(Modifier.fillMaxWidth().clickable(onClick = onEdit).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(17.dp), tint = TextSecondaryLight)
-                    Spacer(Modifier.size(8.dp))
-                    Text("Ada hasil yang salah?", style = MaterialTheme.typography.bodySmall, color = TextSecondaryLight, modifier = Modifier.weight(1f))
-                    Text("Edit", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(8.dp))
                 }
             }
         }
