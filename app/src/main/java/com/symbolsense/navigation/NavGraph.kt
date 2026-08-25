@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -48,6 +49,14 @@ fun SymbolSenseNavGraph(
     val history by historyViewModel.history.collectAsState()
     var currentImageUri by rememberSaveable { mutableStateOf<String?>(null) }
 
+    val context = LocalContext.current
+    val onboardingPrefs = remember {
+        context.getSharedPreferences("symbolsense_onboarding", android.content.Context.MODE_PRIVATE)
+    }
+    var onboardingCompleted by remember {
+        mutableStateOf(onboardingPrefs.getBoolean("completed", false))
+    }
+
     fun openTab(tab: BottomNavTab) {
         val route = when (tab) {
             BottomNavTab.HOME -> Screen.Home.route
@@ -72,7 +81,13 @@ fun SymbolSenseNavGraph(
         composable(Screen.Splash.route) {
             SplashScreen(
                 onTimeout = {
-                    navController.navigate(Screen.Onboarding.route) {
+                    val destination = if (onboardingCompleted) {
+                        Screen.Home.route
+                    } else {
+                        Screen.Onboarding.route
+                    }
+
+                    navController.navigate(destination) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }
@@ -81,6 +96,9 @@ fun SymbolSenseNavGraph(
 
         composable(Screen.Onboarding.route) {
             OnboardingScreen {
+                onboardingPrefs.edit().putBoolean("completed", true).apply()
+                onboardingCompleted = true
+
                 navController.navigate(Screen.Home.route) {
                     popUpTo(Screen.Onboarding.route) { inclusive = true }
                 }
