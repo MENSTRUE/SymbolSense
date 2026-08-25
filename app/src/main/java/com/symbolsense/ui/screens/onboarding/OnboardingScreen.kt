@@ -1,6 +1,13 @@
 package com.symbolsense.ui.screens.onboarding
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,163 +18,88 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
+import com.symbolsense.ui.theme.BorderLight
+import com.symbolsense.ui.theme.CyanAccent
+import com.symbolsense.ui.theme.IndigoPrimary
+import com.symbolsense.ui.theme.SurfaceRaisedLight
+import com.symbolsense.ui.theme.SymbolMono
+import com.symbolsense.ui.theme.TextSecondaryLight
 
-private data class OnboardingPage(
-    val title: String,
-    val subtitle: String,
-    val previewCode: String
-)
+private data class Slide(val title: String, val body: String, val type: Int)
 
-private val pages = listOf(
-    OnboardingPage(
-        title = "Scan Simbol Apa Saja",
-        subtitle = "Matematika, kimia, sampai skema elektronika — semua dalam satu aplikasi.",
-        previewCode = "∫₀^∞ f(x)dx = 1\nE = mc²\n∇·B = 0"
-    ),
-    OnboardingPage(
-        title = "Deteksi Akurat, Offline",
-        subtitle = "AI mengenali simbol langsung di perangkat, tanpa internet.",
-        previewCode = "[∫ 97%] [x² 93%] [dx 88%]\n[√ 62%] [≤ 58%]"
-    ),
-    OnboardingPage(
-        title = "Edit & Export Instan",
-        subtitle = "Salin ke catatan, simpan sebagai PDF, atau bagikan langsung.",
-        previewCode = "∫ x² dx = x³/3 + C\n> Export: PDF · DOCX · LaTeX"
-    )
-)
-
-/**
- * Screen 2/15 — Onboarding (3 slide carousel).
- */
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
-    val pagerState = rememberPagerState(pageCount = { pages.size })
-    val scope = rememberCoroutineScope()
+    val slides = listOf(
+        Slide("Pindai simbol apa pun", "Arahkan kamera ke simbol matematika, kimia, atau elektronika, atau pilih gambar dari galeri.", 0),
+        Slide("Lihat apa yang ditemukan", "Setiap simbol menampilkan nama, domain, dan tingkat kepercayaan. Deteksi yang meragukan ditandai untuk ditinjau.", 1),
+        Slide("Edit dan ekspor", "Tinjau hasil terstruktur dalam LaTeX, SMILES, Netlist, atau teks biasa lalu simpan dan ekspor.", 2)
+    )
+    var index by remember { mutableIntStateOf(0) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp)
-    ) {
-        // "Lewati" di kanan atas
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onFinish) {
-                Text("Lewati", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+            Text("Lewati", modifier = Modifier.clickable(onClick = onFinish).padding(8.dp), style = MaterialTheme.typography.bodyMedium, color = TextSecondaryLight)
+        }
+        AnimatedContent(targetState = index, transitionSpec = { fadeIn() togetherWith fadeOut() }, modifier = Modifier.weight(1f), label = "onboarding") { i ->
+            val slide = slides[i]
+            Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.Center) {
+                OnboardingVisual(slide.type)
+                Spacer(Modifier.height(30.dp))
+                Text(slide.title, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(slide.body, style = MaterialTheme.typography.bodyMedium, color = TextSecondaryLight)
             }
         }
-
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f)
-        ) { page ->
-            OnboardingPageContent(pages[page])
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Page indicator dots
-            Row {
-                pages.indices.forEach { index ->
-                    val isActive = pagerState.currentPage == index
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 6.dp)
-                            .size(if (isActive) 24.dp else 8.dp, 8.dp)
-                            .background(
-                                color = if (isActive) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surfaceVariant,
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                    )
-                }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                slides.indices.forEach { i -> Box(Modifier.size(width = if (i == index) 20.dp else 6.dp, height = 6.dp).background(if (i == index) IndigoPrimary else BorderLight, androidx.compose.foundation.shape.CircleShape).clickable { index = i }) }
             }
-
-            Button(
-                onClick = {
-                    if (pagerState.currentPage < pages.lastIndex) {
-                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                    } else {
-                        onFinish()
-                    }
-                },
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(if (pagerState.currentPage < pages.lastIndex) "Lanjut" else "Mulai")
+            Button(onClick = { if (index == slides.lastIndex) onFinish() else index++ }, shape = MaterialTheme.shapes.medium, colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary), elevation = ButtonDefaults.buttonElevation(0.dp)) {
+                Text(if (index == slides.lastIndex) "Mulai" else "Lanjut")
             }
         }
     }
 }
 
 @Composable
-private fun OnboardingPageContent(page: OnboardingPage) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+private fun OnboardingVisual(type: Int) {
+    Box(
+        Modifier.fillMaxWidth().height(150.dp).background(SurfaceRaisedLight, MaterialTheme.shapes.medium).border(1.dp, BorderLight, MaterialTheme.shapes.medium),
+        contentAlignment = Alignment.Center
     ) {
-        // Preview "scan" card
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(160.dp)
-        ) {
-            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Text(
-                    text = page.previewCode,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.surface,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                )
-                // Scan line aksen
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .fillMaxWidth(0.4f)
-                        .height(2.dp)
-                        .background(MaterialTheme.colorScheme.secondary)
-                )
+        when (type) {
+            0 -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) { listOf("∫", "Σ", "√").forEach { Text(it, fontFamily = SymbolMono, style = MaterialTheme.typography.titleLarge) } }
+                Canvas(Modifier.fillMaxSize().padding(12.dp)) {
+                    val l = 18.dp.toPx(); val w = 2.dp.toPx()
+                    fun c(x:Float,y:Float,sx:Float,sy:Float){ drawLine(CyanAccent,Offset(x,y),Offset(x+sx*l,y),w); drawLine(CyanAccent,Offset(x,y),Offset(x,y+sy*l),w) }
+                    c(0f,0f,1f,1f); c(size.width,0f,-1f,1f); c(0f,size.height,1f,-1f); c(size.width,size.height,-1f,-1f)
+                }
             }
+            1 -> Canvas(Modifier.fillMaxSize().padding(20.dp)) {
+                drawRect(CyanAccent, Offset(size.width*.08f,size.height*.18f), Size(size.width*.24f,size.height*.34f), style=Stroke(2.dp.toPx()))
+                drawRect(CyanAccent, Offset(size.width*.40f,size.height*.26f), Size(size.width*.20f,size.height*.22f), style=Stroke(2.dp.toPx()))
+                drawRect(com.symbolsense.ui.theme.AmberWarning, Offset(size.width*.67f,size.height*.32f), Size(size.width*.20f,size.height*.20f), style=Stroke(2.dp.toPx()))
+            }
+            else -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("∫ x² dx = x³/3 + C", fontFamily = SymbolMono, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.size(14.dp)); Text("LaTeX  ·  PDF  ·  DOCX", style = MaterialTheme.typography.labelMedium, color = TextSecondaryLight) }
         }
-
-        Spacer(Modifier.size(32.dp))
-
-        Text(
-            text = page.title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.size(8.dp))
-
-        Text(
-            text = page.subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
     }
 }

@@ -2,55 +2,39 @@ package com.symbolsense.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.symbolsense.R
 
-/**
- * Tambahkan file font berikut ke res/font/ lalu uncomment baris di bawah
- * untuk memakai Space Grotesk + Inter sesuai design token Figma.
- *
- * res/font/space_grotesk_semibold.ttf
- * res/font/space_grotesk_bold.ttf
- * res/font/inter_regular.ttf
- * res/font/inter_medium.ttf
- */
-// val SpaceGrotesk = FontFamily(
-//     Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
-//     Font(R.font.space_grotesk_bold, FontWeight.Bold)
-// )
-// val Inter = FontFamily(
-//     Font(R.font.inter_regular, FontWeight.Normal),
-//     Font(R.font.inter_medium, FontWeight.Medium)
-// )
-
-// Fallback ke font sistem sampai font custom ditambahkan
+// Figma memakai Space Grotesk + Inter + JetBrains Mono.
+// Versi Android ini memakai font sistem agar project langsung build tanpa file font eksternal.
 val SpaceGrotesk = FontFamily.SansSerif
-val Inter = FontFamily.Default
+val Inter = FontFamily.SansSerif
+val SymbolMono = FontFamily.Monospace
 
 val SymbolSenseTypography = Typography(
     headlineSmall = TextStyle(
         fontFamily = SpaceGrotesk,
         fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
-        lineHeight = 34.sp
+        fontSize = 24.sp,
+        lineHeight = 30.sp,
+        letterSpacing = (-0.3).sp
     ),
     titleLarge = TextStyle(
         fontFamily = SpaceGrotesk,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 22.sp,
-        lineHeight = 28.sp
+        lineHeight = 28.sp,
+        letterSpacing = (-0.2).sp
     ),
     titleMedium = TextStyle(
-        fontFamily = SpaceGrotesk,
+        fontFamily = Inter,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp
+        fontSize = 17.sp,
+        lineHeight = 23.sp
     ),
     titleSmall = TextStyle(
-        fontFamily = SpaceGrotesk,
+        fontFamily = Inter,
         fontWeight = FontWeight.SemiBold,
         fontSize = 15.sp,
         lineHeight = 20.sp
@@ -75,7 +59,7 @@ val SymbolSenseTypography = Typography(
     ),
     labelLarge = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
         lineHeight = 20.sp
     ),
@@ -87,8 +71,9 @@ val SymbolSenseTypography = Typography(
     ),
     labelSmall = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
-        lineHeight = 14.sp
+        lineHeight = 14.sp,
+        letterSpacing = 0.8.sp
     )
 )

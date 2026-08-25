@@ -1,76 +1,67 @@
 package com.symbolsense.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
+import android.graphics.Color as AndroidColor
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Shapes
 import androidx.core.view.WindowCompat
 
 private val LightColors = lightColorScheme(
     primary = IndigoPrimary,
     onPrimary = Color.White,
+    primaryContainer = IndigoPrimaryContainer,
+    onPrimaryContainer = IndigoPrimary,
     secondary = CyanAccent,
     onSecondary = Color.White,
+    secondaryContainer = CyanContainer,
+    onSecondaryContainer = CyanAccent,
     tertiary = AmberWarning,
+    tertiaryContainer = AmberContainer,
     background = BackgroundLight,
     onBackground = TextPrimaryLight,
     surface = SurfaceLight,
     onSurface = TextPrimaryLight,
-    surfaceVariant = DividerLight,
+    surfaceVariant = SurfaceRaisedLight,
     onSurfaceVariant = TextSecondaryLight,
-    error = RedDanger
-)
-
-private val DarkColors = darkColorScheme(
-    primary = IndigoPrimaryDark,
-    onPrimary = Color.White,
-    secondary = CyanAccent,
-    onSecondary = Color.Black,
-    tertiary = AmberWarning,
-    background = BackgroundDark,
-    onBackground = TextPrimaryDark,
-    surface = SurfaceDark,
-    onSurface = TextPrimaryDark,
-    surfaceVariant = DividerDark,
-    onSurfaceVariant = TextSecondaryDark,
+    outline = BorderStrongLight,
+    outlineVariant = BorderLight,
     error = RedDanger
 )
 
 val SymbolSenseShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(14.dp),
+    extraLarge = RoundedCornerShape(18.dp)
 )
 
 @Composable
 fun SymbolSenseTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColors else LightColors
     val view = LocalView.current
-
     if (!view.isInEditMode) {
-        val context = view.context
-        if (context is Activity) {
-            val window = context.window
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+        val activity = view.context as? Activity
+        activity?.window?.let { window ->
+            window.statusBarColor = AndroidColor.TRANSPARENT
+            window.navigationBarColor = AndroidColor.TRANSPARENT
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = true
+                isAppearanceLightNavigationBars = true
+            }
         }
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = LightColors,
         typography = SymbolSenseTypography,
         shapes = SymbolSenseShapes,
         content = content

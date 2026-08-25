@@ -8,15 +8,15 @@ object SampleData {
 
     val detectedSymbols = listOf(
         DetectedSymbol("1", "Integral", "∫", 0.97f, RelativeBoundingBox(0.05f, 0.05f, 0.20f, 0.22f)),
-        DetectedSymbol("2", "x squared", "x²", 0.93f, RelativeBoundingBox(0.28f, 0.05f, 0.45f, 0.22f)),
-        DetectedSymbol("3", "Differential", "dx", 0.88f, RelativeBoundingBox(0.55f, 0.05f, 0.75f, 0.22f)),
-        DetectedSymbol("4", "Exp", "e^x", 0.91f, RelativeBoundingBox(0.05f, 0.35f, 0.30f, 0.52f)),
-        DetectedSymbol("5", "Sqrt", "√(a²+b²)", 0.62f, RelativeBoundingBox(0.32f, 0.55f, 0.55f, 0.75f)),
-        DetectedSymbol("6", "Leq", "≤", 0.58f, RelativeBoundingBox(0.58f, 0.55f, 0.70f, 0.75f))
+        DetectedSymbol("2", "Eksponen", "x²", 0.93f, RelativeBoundingBox(0.28f, 0.05f, 0.45f, 0.22f)),
+        DetectedSymbol("3", "Diferensial", "dx", 0.88f, RelativeBoundingBox(0.55f, 0.05f, 0.75f, 0.22f)),
+        DetectedSymbol("4", "Eksponensial", "e^x", 0.91f, RelativeBoundingBox(0.05f, 0.35f, 0.30f, 0.52f)),
+        DetectedSymbol("5", "Akar kuadrat", "√(a²+b²)", 0.62f, RelativeBoundingBox(0.32f, 0.55f, 0.55f, 0.75f)),
+        DetectedSymbol("6", "Kurang dari atau sama dengan", "≤", 0.58f, RelativeBoundingBox(0.58f, 0.55f, 0.70f, 0.75f))
     )
 
     val mathResult = ScanResult(
-        id = "scan_1",
+        id = "draft_math",
         domain = SymbolDomain.MATH,
         timestampLabel = "Hari ini, 14:32",
         rawPreviewText = "∫₀^∞ e^{-x²} dx = √π/2 · ...",
@@ -25,53 +25,8 @@ object SampleData {
         detectedSymbols = detectedSymbols
     )
 
-    val historyList = listOf(
-        ScanResult(
-            id = "h1",
-            domain = SymbolDomain.MATH,
-            timestampLabel = "Hari ini, 14:32",
-            rawPreviewText = "∫₀^∞ e^{-x²} dx = √π/2 · ...",
-            structuredOutput = "∫₀^∞ e^{-x²} dx = √π/2",
-            latexOrCode = "\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}",
-            detectedSymbols = detectedSymbols
-        ),
-        ScanResult(
-            id = "h2",
-            domain = SymbolDomain.CHEMISTRY,
-            timestampLabel = "Hari ini, 11:18",
-            rawPreviewText = "C₆H₅OH + NaOH → C₆H₅ONa + ...",
-            structuredOutput = "C6H5OH + NaOH -> C6H5ONa + H2O",
-            latexOrCode = "C6H5OH + NaOH -> C6H5ONa + H2O",
-            detectedSymbols = emptyList()
-        ),
-        ScanResult(
-            id = "h3",
-            domain = SymbolDomain.ELECTRONICS,
-            timestampLabel = "Kemarin, 16:45",
-            rawPreviewText = "R1: 10kΩ, R2: 4.7kΩ, C1: ...",
-            structuredOutput = "R1=10k, R2=4.7k, C1=100nF",
-            latexOrCode = "R1=10k, R2=4.7k, C1=100nF",
-            detectedSymbols = emptyList()
-        ),
-        ScanResult(
-            id = "h4",
-            domain = SymbolDomain.MATH,
-            timestampLabel = "Kemarin, 09:20",
-            rawPreviewText = "∇²φ = ρ/ε₀ (Persamaan Poi...)",
-            structuredOutput = "∇²φ = ρ/ε₀",
-            latexOrCode = "\\nabla^2 \\varphi = \\rho / \\varepsilon_0",
-            detectedSymbols = emptyList()
-        ),
-        ScanResult(
-            id = "h5",
-            domain = SymbolDomain.CHEMISTRY,
-            timestampLabel = "13 Jun, 20:11",
-            rawPreviewText = "CH₄ + 2O₂ → CO₂ + 2H₂O (P...)",
-            structuredOutput = "CH4 + 2O2 -> CO2 + 2H2O",
-            latexOrCode = "CH4 + 2O2 -> CO2 + 2H2O",
-            detectedSymbols = emptyList()
-        )
-    )
+    // Riwayat tidak lagi memakai data dummy.
+    // Data riwayat sekarang berasal dari Room Database.
 
     val symbolLibrary = listOf(
         SymbolEntry(
@@ -101,7 +56,7 @@ object SampleData {
             )
         ),
         SymbolEntry(
-            id = "partial", name = "Partial", glyph = "∂", domain = SymbolDomain.MATH,
+            id = "partial", name = "Turunan parsial", glyph = "∂", domain = SymbolDomain.MATH,
             category = "Kalkulus",
             description = "Simbol turunan parsial (∂) digunakan untuk menyatakan turunan suatu fungsi " +
                 "multivariabel terhadap salah satu variabelnya.",
@@ -130,7 +85,7 @@ object SampleData {
             usageExamples = listOf(UsageExample("x = -b ± √(b²-4ac) / 2a", "Rumus kuadrat (ABC)"))
         ),
         SymbolEntry(
-            id = "infinity", name = "Infinity", glyph = "∞", domain = SymbolDomain.MATH,
+            id = "infinity", name = "Tak hingga", glyph = "∞", domain = SymbolDomain.MATH,
             category = "Kalkulus",
             description = "Simbol tak hingga (∞) menyatakan suatu nilai yang tidak terbatas atau bertumbuh " +
                 "tanpa batas.",
@@ -169,7 +124,7 @@ object SampleData {
             usageExamples = listOf(UsageExample("Δx = x₂ - x₁", "Selisih posisi"))
         ),
         SymbolEntry(
-            id = "sqrt", name = "Sqrt", glyph = "√", domain = SymbolDomain.MATH,
+            id = "sqrt", name = "Akar kuadrat", glyph = "√", domain = SymbolDomain.MATH,
             category = "Aljabar",
             description = "Simbol akar (√) menyatakan operasi akar kuadrat (atau akar pangkat-n dengan indeks).",
             notationLatex = "\\sqrt{x}",
@@ -178,7 +133,7 @@ object SampleData {
             usageExamples = listOf(UsageExample("√(a²+b²) ≤ a + b", "Pertidaksamaan segitiga"))
         ),
         SymbolEntry(
-            id = "forall", name = "Forall", glyph = "∀", domain = SymbolDomain.MATH,
+            id = "forall", name = "Untuk semua", glyph = "∀", domain = SymbolDomain.MATH,
             category = "Aljabar",
             description = "Kuantor universal (∀) berarti \"untuk semua\" — digunakan dalam logika dan " +
                 "pernyataan matematis formal.",
@@ -188,7 +143,7 @@ object SampleData {
             usageExamples = listOf(UsageExample("∀x ∈ ℝ, x² ≥ 0", "Pernyataan kuantifikasi universal"))
         ),
         SymbolEntry(
-            id = "exists", name = "Exists", glyph = "∃", domain = SymbolDomain.MATH,
+            id = "exists", name = "Eksistensial", glyph = "∃", domain = SymbolDomain.MATH,
             category = "Aljabar",
             description = "Kuantor eksistensial (∃) berarti \"terdapat\" — menyatakan adanya minimal satu " +
                 "elemen yang memenuhi suatu kondisi.",

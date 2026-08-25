@@ -1,182 +1,256 @@
 package com.symbolsense.ui.screens.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.RemoveRedEye
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.symbolsense.ui.components.AppTopBar
-import com.symbolsense.ui.components.BottomNavTab
-import com.symbolsense.ui.components.SymbolSenseBottomBar
+import com.symbolsense.ui.components.SDivider
+import com.symbolsense.ui.components.SectionLabel
+import com.symbolsense.ui.theme.SymbolMono
+import com.symbolsense.ui.theme.TextSecondaryLight
+import com.symbolsense.ui.theme.TextTertiaryLight
 
 @Composable
 fun SettingsScreen(
-    selectedTab: BottomNavTab,
-    onTabSelected: (BottomNavTab) -> Unit,
-    onOpenCamera: () -> Unit,
+    onBack: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onClearHistory: () -> Unit,
     onAbout: () -> Unit
 ) {
-    var darkMode by remember { mutableStateOf(false) }
-    var autoDomainDetect by remember { mutableStateOf(true) }
-    var confidenceThreshold by remember { mutableStateOf(0.70f) }
-    var autoPerspective by remember { mutableStateOf(true) }
-    var ttsEnabled by remember { mutableStateOf(false) }
-    var speechRate by remember { mutableStateOf(0.5f) }
+    var autoDomain by remember { mutableStateOf(true) }
+    var confidence by remember { mutableFloatStateOf(0.70f) }
+    var autoCrop by remember { mutableStateOf(true) }
+    var scanAnimation by remember { mutableStateOf(true) }
+    var highContrast by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = { AppTopBar(title = "Setelan") },
-        bottomBar = {
-            SymbolSenseBottomBar(
-                selectedTab = selectedTab,
-                onTabSelected = onTabSelected,
-                onCameraClick = onOpenCamera
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AppTopBar(title = "Pengaturan", onBack = onBack)
+
+        LazyColumn(Modifier.weight(1f)) {
+            item {
+                SectionLabel("Pengenalan")
+                ToggleSetting(
+                    title = "Deteksi domain otomatis",
+                    subtitle = "Pilih domain berdasarkan gambar",
+                    checked = autoDomain,
+                    onChecked = { autoDomain = it }
+                )
+                SDivider(indent = 16)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Kepercayaan minimum",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "Tandai hasil di bawah ambang untuk ditinjau",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondaryLight
+                            )
+                        }
+                        Text(
+                            "${(confidence * 100).toInt()}%",
+                            fontFamily = SymbolMono,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                    Slider(
+                        value = confidence,
+                        onValueChange = { confidence = it },
+                        valueRange = 0.4f..0.95f
+                    )
+                }
+                SDivider()
+            }
+
+            item {
+                SectionLabel("Kamera")
+                ToggleSetting(
+                    "Pangkas otomatis",
+                    "Deteksi area simbol setelah mengambil gambar",
+                    autoCrop
+                ) { autoCrop = it }
+                SDivider(indent = 16)
+                ToggleSetting(
+                    "Animasi pemindaian",
+                    "Tampilkan garis pemindaian cyan",
+                    scanAnimation
+                ) { scanAnimation = it }
+                SDivider()
+            }
+
+            item {
+                SectionLabel("Tampilan & aksesibilitas")
+                ToggleSetting(
+                    "Kontras tinggi",
+                    "Perkuat kontras elemen penting",
+                    highContrast
+                ) { highContrast = it }
+                SDivider()
+            }
+
+            item {
+                SectionLabel("Data")
+                NavigationSetting(
+                    "Riwayat",
+                    "Lihat hasil pemindaian yang tersimpan",
+                    onOpenHistory
+                )
+                SDivider(indent = 16)
+                NavigationSetting(
+                    "Hapus riwayat lokal",
+                    "Hapus seluruh hasil pemindaian dari perangkat"
+                ) {
+                    confirmClear = true
+                }
+                SDivider()
+            }
+
+            item {
+                SectionLabel("Tentang")
+                NavigationSetting("SymbolSense", "Tentang aplikasi", onAbout)
+                SDivider(indent = 16)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Versi",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "0.1.0",
+                        fontFamily = SymbolMono,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondaryLight
+                    )
+                }
+            }
+        }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Hapus seluruh riwayat?") },
+            text = {
+                Text("Semua hasil pemindaian yang tersimpan di perangkat akan dihapus.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                        onClearHistory()
+                    }
+                ) {
+                    Text("Hapus")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ToggleSetting(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondaryLight
             )
         }
-    ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
-            item {
-                Spacer(Modifier.size(8.dp))
-                SectionHeader("TAMPILAN")
-                SettingsGroup {
-                    SwitchRow(icon = Icons.Filled.DarkMode, title = "Mode Gelap", subtitle = "Gunakan tema gelap", checked = darkMode, onCheckedChange = { darkMode = it })
-                    HorizontalDivider()
-                    NavRow(icon = Icons.Filled.Language, title = "Bahasa", subtitle = "Pilih bahasa antarmuka", trailingValue = "Indonesia", onClick = {})
-                }
-
-                Spacer(Modifier.size(20.dp))
-                SectionHeader("PEMROSESAN")
-                SettingsGroup {
-                    SwitchRow(icon = Icons.Filled.AutoAwesome, title = "Deteksi Domain Otomatis", subtitle = "AI memilih domain secara otomatis", checked = autoDomainDetect, onCheckedChange = { autoDomainDetect = it })
-                    HorizontalDivider()
-                    SliderRow(icon = Icons.Filled.Tune, title = "Ambang Confidence Review", subtitle = "Tandai simbol dengan confidence di bawah threshold", value = confidenceThreshold, onValueChange = { confidenceThreshold = it })
-                    HorizontalDivider()
-                    SwitchRow(icon = Icons.Filled.RemoveRedEye, title = "Koreksi Perspektif Otomatis", subtitle = "Luruskan gambar secara otomatis", checked = autoPerspective, onCheckedChange = { autoPerspective = it })
-                }
-
-                Spacer(Modifier.size(20.dp))
-                SectionHeader("AKSESIBILITAS")
-                SettingsGroup {
-                    SwitchRow(icon = Icons.Filled.VolumeUp, title = "Mode Pembacaan Simbol (TTS)", subtitle = "Bacakan nama dan deskripsi simbol", checked = ttsEnabled, onCheckedChange = { ttsEnabled = it })
-                    HorizontalDivider()
-                    SliderRow(icon = Icons.Filled.FastForward, title = "Kecepatan Bicara", subtitle = "Atur kecepatan text-to-speech", value = speechRate, onValueChange = { speechRate = it }, showPercentLabel = false)
-                }
-
-                Spacer(Modifier.size(20.dp))
-                SectionHeader("DATA")
-                SettingsGroup {
-                    NavRow(icon = Icons.Filled.Delete, title = "Hapus Semua Riwayat", subtitle = "Hapus seluruh riwayat scan", titleColor = MaterialTheme.colorScheme.error, iconTint = MaterialTheme.colorScheme.error, onClick = {})
-                    HorizontalDivider()
-                    NavRow(icon = Icons.Filled.Info, title = "Tentang SymbolSense", subtitle = "Versi 1.0.0 · Model v3.2", onClick = onAbout)
-                }
-
-                Spacer(Modifier.size(20.dp))
-                Text("SymbolSense v1.0.0 · © 2026", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                Spacer(Modifier.size(24.dp))
-            }
-        }
+        Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
-}
-
-@Composable
-private fun SettingsGroup(content: @Composable () -> Unit) {
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-        Column { content() }
-    }
-}
-
-@Composable
-private fun SwitchRow(icon: ImageVector, title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp).size(20.dp))
+private fun NavigationSetting(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondaryLight
+            )
         }
-        Spacer(Modifier.size(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyLarge)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun NavRow(icon: ImageVector, title: String, subtitle: String, trailingValue: String? = null, titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface, iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface) {
-        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = iconTint.copy(alpha = 0.1f)) {
-                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.padding(8.dp).size(20.dp))
-            }
-            Spacer(Modifier.size(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyLarge, color = titleColor)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (trailingValue != null) {
-                Text(trailingValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.size(4.dp))
-            }
-            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun SliderRow(icon: ImageVector, title: String, subtitle: String, value: Float, onValueChange: (Float) -> Unit, showPercentLabel: Boolean = true) {
-    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp).size(20.dp))
-            }
-            Spacer(Modifier.size(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyLarge)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (showPercentLabel) {
-                Text("${(value * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Slider(value = value, onValueChange = onValueChange)
+        androidx.compose.material3.Icon(
+            Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = TextTertiaryLight,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }

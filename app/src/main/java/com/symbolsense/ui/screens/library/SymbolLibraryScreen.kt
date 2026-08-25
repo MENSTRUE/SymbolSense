@@ -1,7 +1,7 @@
 package com.symbolsense.ui.screens.library
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,99 +9,114 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.symbolsense.data.model.SampleData
 import com.symbolsense.data.model.SymbolDomain
-import com.symbolsense.data.model.SymbolEntry
-import com.symbolsense.ui.components.AppTopBar
 import com.symbolsense.ui.components.BottomNavTab
-import com.symbolsense.ui.components.DomainChip
-import com.symbolsense.ui.components.SymbolMiniCard
 import com.symbolsense.ui.components.SymbolSenseBottomBar
-import com.symbolsense.ui.components.TrailingAction
-
-private val libraryTabs = listOf(SymbolDomain.MATH, SymbolDomain.CHEMISTRY, SymbolDomain.ELECTRONICS)
+import com.symbolsense.ui.theme.BorderLight
+import com.symbolsense.ui.theme.IndigoPrimary
+import com.symbolsense.ui.theme.SymbolMono
+import com.symbolsense.ui.theme.TextSecondaryLight
 
 @Composable
 fun SymbolLibraryScreen(
     selectedTab: BottomNavTab,
     onTabSelected: (BottomNavTab) -> Unit,
-    onOpenCamera: () -> Unit,
     onOpenSymbol: (String) -> Unit
 ) {
-    var selectedDomainTab by remember { mutableStateOf(0) }
-    var selectedCategory by remember { mutableStateOf("Semua") }
-
-    val domain = libraryTabs[selectedDomainTab]
-    val symbolsForDomain = remember(domain) { SampleData.symbolLibrary.filter { it.domain == domain } }
-    val categories = remember(domain) { listOf("Semua") + symbolsForDomain.map { it.category }.distinct() }
-    val filtered = remember(symbolsForDomain, selectedCategory) {
-        if (selectedCategory == "Semua") symbolsForDomain
-        else symbolsForDomain.filter { it.category == selectedCategory }
+    var query by remember { mutableStateOf("") }
+    var domain by remember { mutableStateOf(SymbolDomain.MATH) }
+    val tabs = listOf(SymbolDomain.MATH, SymbolDomain.CHEMISTRY, SymbolDomain.ELECTRONICS)
+    val filtered = SampleData.symbolLibrary.filter { entry ->
+        entry.domain == domain &&
+            (query.isBlank() || entry.name.contains(query, true) || entry.glyph.contains(query) || entry.category.contains(query, true))
     }
 
     Scaffold(
-        topBar = { AppTopBar(title = "Pustaka Simbol", trailingIcon = TrailingAction.SEARCH) },
-        bottomBar = {
-            SymbolSenseBottomBar(
-                selectedTab = selectedTab,
-                onTabSelected = onTabSelected,
-                onCameraClick = onOpenCamera
-            )
-        }
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
-            TabRow(selectedTabIndex = selectedDomainTab) {
-                libraryTabs.forEachIndexed { index, d ->
-                    Tab(
-                        selected = selectedDomainTab == index,
-                        onClick = { selectedDomainTab = index; selectedCategory = "Semua" },
-                        text = { Text(d.label) }
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = { SymbolSenseBottomBar(selectedTab, onTabSelected) }
+    ) { inner ->
+        Column(Modifier.fillMaxSize().padding(inner)) {
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 12.dp)) {
+                    Text("Pustaka Simbol", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        placeholder = { Text("Cari simbol") },
+                        leadingIcon = { Icon(Icons.Filled.Search, null) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderLight, focusedBorderColor = IndigoPrimary)
                     )
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                        tabs.forEach { d ->
+                            Text(
+                                d.label,
+                                modifier = Modifier.clickable { domain = d }.padding(horizontal = 8.dp, vertical = 10.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (domain == d) IndigoPrimary else TextSecondaryLight,
+                                fontWeight = if (domain == d) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(Modifier.size(12.dp))
-
-            // Category chips — scrollable
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)
             ) {
-                categories.forEach { category ->
-                    DomainChip(label = category, icon = "", selected = selectedCategory == category, onClick = { selectedCategory = category })
+                if (filtered.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Belum ada data contoh", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.size(6.dp))
+                            Text("Belum ada simbol untuk domain ${domain.label.lowercase()}.", style = MaterialTheme.typography.bodySmall, color = TextSecondaryLight)
+                        }
+                    }
                 }
-                Spacer(Modifier.width(4.dp))
-            }
-
-            Spacer(Modifier.size(12.dp))
-
-            if (filtered.isEmpty()) {
-                Text("Belum ada simbol untuk domain ini.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 32.dp))
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(filtered) { entry: SymbolEntry ->
-                        SymbolMiniCard(glyph = entry.glyph, label = entry.name, modifier = Modifier.fillMaxWidth(), onClick = { onOpenSymbol(entry.id) })
+                items(filtered) { entry ->
+                    Surface(
+                        onClick = { onOpenSymbol(entry.id) },
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = MaterialTheme.shapes.medium,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight),
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 8.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(entry.glyph, fontFamily = SymbolMono, fontWeight = FontWeight.Bold, fontSize = 34.sp)
+                            Spacer(Modifier.size(8.dp))
+                            Text(entry.name, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                            Text(entry.category, style = MaterialTheme.typography.bodySmall, color = TextSecondaryLight, maxLines = 1)
+                        }
                     }
                 }
             }

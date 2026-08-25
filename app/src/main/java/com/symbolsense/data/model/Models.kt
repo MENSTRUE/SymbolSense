@@ -26,7 +26,12 @@ data class RelativeBoundingBox(
     val bottom: Float
 )
 
-/** Hasil akhir terstruktur (LaTeX / SMILES / Netlist) untuk satu sesi scan. */
+/**
+ * Hasil akhir satu sesi scan.
+ *
+ * createdAtMillis dipakai Room agar riwayat dapat diurutkan secara benar dan
+ * tetap konsisten setelah aplikasi ditutup/dibuka kembali.
+ */
 data class ScanResult(
     val id: String,
     val domain: SymbolDomain,
@@ -34,7 +39,9 @@ data class ScanResult(
     val rawPreviewText: String,
     val structuredOutput: String,
     val latexOrCode: String,
-    val detectedSymbols: List<DetectedSymbol>
+    val detectedSymbols: List<DetectedSymbol>,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val imageUri: String? = null
 )
 
 /** Entri referensi simbol untuk Pustaka Simbol. */

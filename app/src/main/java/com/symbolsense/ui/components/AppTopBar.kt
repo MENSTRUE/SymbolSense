@@ -3,38 +3,35 @@ package com.symbolsense.ui.components
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.symbolsense.ui.theme.BorderLight
+import com.symbolsense.ui.theme.IndigoPrimary
+import com.symbolsense.ui.theme.IndigoPrimaryContainer
+import com.symbolsense.ui.theme.TextSecondaryLight
 
 enum class TrailingAction { SETTINGS, SEARCH, SHARE }
 
-/**
- * Top app bar standar dipakai di hampir semua screen.
- * - [onBack] null -> tombol back disembunyikan (misal di Home)
- * - [titleBadge] dipakai untuk badge domain kecil di sebelah judul (Screen 9 - Result Editor)
- * - [trailingIcon] aksi kanan (settings/search/share)
- * - [onTrailingClick] callback aksi kanan
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(
     title: String,
@@ -43,58 +40,59 @@ fun AppTopBar(
     trailingIcon: TrailingAction? = null,
     onTrailingClick: (() -> Unit)? = null,
     titleBadge: String? = null,
-    titleBadgeColor: Color = MaterialTheme.colorScheme.primary,
-    titleBadgeBg: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    titleBadgeColor: Color = IndigoPrimary,
+    titleBadgeBg: Color = IndigoPrimaryContainer
 ) {
-    TopAppBar(
-        title = {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = title, style = MaterialTheme.typography.titleLarge)
-                    if (titleBadge != null) {
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            color = titleBadgeBg,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = titleBadge,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = titleBadgeColor,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onBack != null) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
+                    }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (titleBadge != null) {
+                            Spacer(Modifier.width(8.dp))
+                            Surface(color = titleBadgeBg, shape = MaterialTheme.shapes.extraLarge) {
+                                Text(
+                                    titleBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = titleBadgeColor,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
-                }
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        },
-        navigationIcon = {
-            if (onBack != null) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
-                }
-            }
-        },
-        actions = {
-            if (trailingIcon != null) {
-                IconButton(onClick = { onTrailingClick?.invoke() }) {
-                    when (trailingIcon) {
-                        TrailingAction.SETTINGS -> Icon(Icons.Filled.Settings, contentDescription = "Setelan")
-                        TrailingAction.SEARCH -> Icon(Icons.Filled.Search, contentDescription = "Cari")
-                        TrailingAction.SHARE -> Icon(Icons.Filled.Share, contentDescription = "Bagikan")
+                    if (subtitle != null) {
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondaryLight)
                     }
                 }
+
+                if (trailingIcon != null) {
+                    IconButton(onClick = { onTrailingClick?.invoke() }) {
+                        when (trailingIcon) {
+                            TrailingAction.SETTINGS -> Icon(Icons.Filled.Settings, contentDescription = "Pengaturan")
+                            TrailingAction.SEARCH -> Icon(Icons.Filled.Search, contentDescription = "Cari")
+                            TrailingAction.SHARE -> Icon(Icons.Filled.Share, contentDescription = "Bagikan")
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
             }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.background
-        )
-    )
+            HorizontalDivider(color = BorderLight)
+        }
+    }
 }

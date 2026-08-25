@@ -2,44 +2,38 @@ package com.symbolsense.ui.screens.historydetail
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.symbolsense.data.model.ScanResult
 import com.symbolsense.ui.components.AppTopBar
-import com.symbolsense.ui.components.DomainBadge
-import com.symbolsense.ui.components.TrailingAction
+import com.symbolsense.ui.components.ConfidenceText
+import com.symbolsense.ui.components.GlyphTile
+import com.symbolsense.ui.components.SDivider
+import com.symbolsense.ui.components.SecondaryActionButton
+import com.symbolsense.ui.components.SectionLabel
+import com.symbolsense.ui.components.domainCodeLabel
+import com.symbolsense.ui.theme.CodeBlack
+import com.symbolsense.ui.theme.SymbolMono
+import com.symbolsense.ui.theme.TextSecondaryLight
 
-/**
- * Screen 12/15 — History Detail.
- */
 @Composable
 fun HistoryDetailScreen(
     result: ScanResult,
@@ -48,127 +42,39 @@ fun HistoryDetailScreen(
     onEdit: () -> Unit,
     onExport: () -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = "Detail Scan",
-                onBack = onBack,
-                trailingIcon = TrailingAction.SHARE,
-                onTrailingClick = onDelete
-            )
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AppTopBar(title = "Detail riwayat", subtitle = result.timestampLabel, onBack = onBack)
+        LazyColumn(Modifier.weight(1f)) {
+            item { SectionLabel("Konten yang dikenali") }
+            item {
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                    Text(result.rawPreviewText, fontFamily = SymbolMono, style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.size(6.dp)); Text(result.domain.label, style = MaterialTheme.typography.bodySmall, color = TextSecondaryLight)
+                }
+                SDivider()
+            }
+            item { SectionLabel("Simbol terdeteksi") }
+            itemsIndexed(result.detectedSymbols) { index, symbol ->
+                if (index > 0) SDivider(indent = 56)
+                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    GlyphTile(symbol.displayGlyph, size = 32); Spacer(Modifier.size(12.dp))
+                    Text(symbol.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    ConfidenceText(symbol.confidence)
+                }
+            }
+            item {
+                SectionLabel("Hasil terstruktur")
+                Column(Modifier.fillMaxWidth().background(CodeBlack).padding(16.dp)) {
+                    Text(domainCodeLabel(result.domain), style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.40f))
+                    Spacer(Modifier.size(8.dp)); Text(result.latexOrCode, fontFamily = SymbolMono, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp)
-        ) {
-            // Gambar original
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    // Memanggil fungsi helper dengan parameter yang jelas
-                    .background2(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(12.dp)
-                ) {
-                    Box(modifier = Modifier) {
-                        DomainBadge(result.domain)
-                    }
-                }
-                Text(
-                    result.rawPreviewText,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.Center).padding(16.dp)
-                )
-            }
-
-            Spacer(Modifier.size(16.dp))
-
-            // Hasil terstruktur
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "Hasil Terstruktur",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.size(8.dp))
-                    Text(
-                        result.structuredOutput,
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-
-            Spacer(Modifier.size(12.dp))
-
-            // Info disimpan
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Disimpan pada ${result.timestampLabel}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onEdit,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text("Edit")
-                }
-                Button(
-                    onClick = onExport,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
-                    Spacer(Modifier.size(6.dp))
-                    Text("Export")
-                }
-            }
+        SDivider()
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Hapus") }
+            SecondaryActionButton("Edit", onEdit, Modifier.weight(1f))
+            androidx.compose.material3.Button(onClick = onExport, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(0.dp)) { Text("Ekspor") }
         }
     }
 }
-
-// Extension function modifier yang benar (bukan Composable)
-private fun Modifier.background2(
-    color: Color,
-    shape: Shape
-): Modifier = this.then(
-    Modifier.background(color = color, shape = shape)
-)

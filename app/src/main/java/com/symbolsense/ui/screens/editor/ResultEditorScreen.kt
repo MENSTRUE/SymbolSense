@@ -1,36 +1,24 @@
 package com.symbolsense.ui.screens.editor
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,18 +28,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.symbolsense.data.model.ScanResult
-import com.symbolsense.data.model.SymbolDomain
 import com.symbolsense.ui.components.AppTopBar
+import com.symbolsense.ui.components.ConfidenceText
+import com.symbolsense.ui.components.GlyphTile
+import com.symbolsense.ui.components.SDivider
+import com.symbolsense.ui.components.SecondaryActionButton
+import com.symbolsense.ui.components.SectionLabel
 import com.symbolsense.ui.components.TrailingAction
-import com.symbolsense.ui.theme.DomainColors
-import com.symbolsense.ui.theme.GreenSuccess
+import com.symbolsense.ui.components.domainCodeLabel
+import com.symbolsense.ui.theme.BorderLight
+import com.symbolsense.ui.theme.CodeBlack
+import com.symbolsense.ui.theme.CyanAccent
+import com.symbolsense.ui.theme.IndigoPrimary
+import com.symbolsense.ui.theme.SymbolMono
+import com.symbolsense.ui.theme.TextSecondaryLight
+import com.symbolsense.ui.theme.TextTertiaryLight
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ResultEditorScreen(
     result: ScanResult,
@@ -60,159 +55,73 @@ fun ResultEditorScreen(
     onEditManual: () -> Unit,
     onOpenHistory: () -> Unit,
     onExport: () -> Unit,
-    onScanLagi: () -> Unit   // ← BARU: tombol scan lagi
+    onScanLagi: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
-    val codeTabLabel = when (result.domain) {
-        SymbolDomain.MATH -> "Kode LaTeX"
-        SymbolDomain.CHEMISTRY -> "Kode SMILES"
-        SymbolDomain.ELECTRONICS -> "Netlist"
-        else -> "Kode"
-    }
-    val (badgeBg, badgeFg) = when (result.domain) {
-        SymbolDomain.MATH -> DomainColors.MathBg to DomainColors.MathText
-        SymbolDomain.CHEMISTRY -> DomainColors.ChemBg to DomainColors.ChemText
-        SymbolDomain.ELECTRONICS -> DomainColors.ElectroBg to DomainColors.ElectroText
-        else -> DomainColors.GeneralBg to DomainColors.GeneralText
-    }
+    var tab by remember { mutableStateOf(0) }
+    var copied by remember { mutableStateOf(false) }
+    val codeLabel = domainCodeLabel(result.domain)
 
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = "Hasil",
-                titleBadge = result.domain.label,
-                titleBadgeBg = badgeBg,
-                titleBadgeColor = badgeFg,
-                onBack = onBack,
-                trailingIcon = TrailingAction.SHARE,
-                onTrailingClick = onShare
-            )
-        },
-        bottomBar = {
-            // Bottom action bar khusus result — bukan bottom nav tab
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                // Row 1: Edit | Simpan ke Riwayat | Export
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AppTopBar(title = "Hasil", onBack = onBack, trailingIcon = TrailingAction.SHARE, onTrailingClick = onShare, titleBadge = result.domain.label)
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+            listOf("Pratinjau", "Kode $codeLabel").forEachIndexed { index, title ->
+                Column(
+                    modifier = Modifier.weight(1f).clickable { tab = index }.padding(top = 11.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    OutlinedButton(
-                        onClick = onEditManual,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Edit")
-                    }
-                    OutlinedButton(
-                        onClick = onOpenHistory,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Riwayat")
-                    }
-                    Button(
-                        onClick = onExport,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                        Spacer(Modifier.size(4.dp))
-                        Text("Export")
-                    }
-                }
-
-                Spacer(Modifier.size(8.dp))
-
-                // Row 2: SCAN LAGI — full width, sekali tap langsung ke kamera
-                Button(
-                    onClick = onScanLagi,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    )
-                ) {
-                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
-                    Spacer(Modifier.size(8.dp))
-                    Text("Scan Lagi", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Normal, color = if (tab == index) IndigoPrimary else TextSecondaryLight)
+                    Spacer(Modifier.height(9.dp))
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(if (tab == index) IndigoPrimary else Color.Transparent))
                 }
             }
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-        ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Pratinjau") })
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text(codeTabLabel) })
-            }
+        HorizontalDivider(color = BorderLight)
 
-            Spacer(Modifier.size(16.dp))
-
-            if (selectedTab == 0) PreviewTab(result) else CodeTab(result, codeTabLabel)
-
-            Spacer(Modifier.size(20.dp))
-
-            Text("Simbol Terdeteksi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.size(8.dp))
-
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                result.detectedSymbols.forEach { symbol ->
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(bottom = 8.dp)
+        if (tab == 0) {
+            LazyColumn(Modifier.weight(1f)) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().padding(16.dp).background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium).padding(horizontal = 20.dp, vertical = 28.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            "${symbol.displayGlyph} ${symbol.label}",
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
+                        Text(result.structuredOutput, fontFamily = SymbolMono, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                item { SectionLabel("Simbol yang dikenali") }
+                itemsIndexed(result.detectedSymbols) { index, symbol ->
+                    if (index > 0) SDivider(indent = 56)
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        GlyphTile(symbol.displayGlyph, size = 32)
+                        Spacer(Modifier.size(12.dp))
+                        Text(symbol.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        ConfidenceText(symbol.confidence)
                     }
                 }
             }
-
-            Spacer(Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun PreviewTab(result: ScanResult) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(result.structuredOutput, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, fontFamily = FontFamily.Serif)
-            Spacer(Modifier.size(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = GreenSuccess, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(6.dp))
-                Text("${result.detectedSymbols.size} simbol berhasil dirender", color = GreenSuccess, style = MaterialTheme.typography.bodySmall)
+        } else {
+            Column(Modifier.weight(1f).padding(16.dp)) {
+                Column(Modifier.fillMaxWidth().background(CodeBlack, MaterialTheme.shapes.medium)) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(codeLabel, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.38f), modifier = Modifier.weight(1f))
+                        Row(Modifier.clickable { copied = true }.padding(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Icon(if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy, null, tint = if (copied) Color(0xFF4ADE80) else Color.White.copy(alpha = 0.55f), modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.size(5.dp)); Text(if (copied) "Tersalin" else "Salin", style = MaterialTheme.typography.labelMedium, color = if (copied) Color(0xFF4ADE80) else Color.White.copy(alpha = 0.55f))
+                        }
+                    }
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    Text(result.latexOrCode, fontFamily = SymbolMono, color = Color.White.copy(alpha = 0.80f), modifier = Modifier.fillMaxWidth().padding(14.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(10.dp))
+                Text("Edit kode untuk memperbaiki simbol yang dikenali sebelum mengekspor.", style = MaterialTheme.typography.bodySmall, color = TextTertiaryLight)
             }
         }
-    }
-}
 
-@Composable
-private fun CodeTab(result: ScanResult, codeLabel: String) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(result.latexOrCode, color = MaterialTheme.colorScheme.surface, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(end = 32.dp))
-            IconButton(onClick = {}, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
-                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $codeLabel", tint = MaterialTheme.colorScheme.surface)
+        HorizontalDivider(color = BorderLight)
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SecondaryActionButton("Edit", onClick = onEditManual, modifier = Modifier.weight(1f))
+            SecondaryActionButton("Simpan", onClick = onOpenHistory, modifier = Modifier.weight(1f))
+            androidx.compose.material3.Button(onClick = onExport, modifier = Modifier.weight(1.35f).height(46.dp), shape = MaterialTheme.shapes.medium, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = IndigoPrimary), elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(0.dp)) {
+                Text("Ekspor")
             }
         }
     }
