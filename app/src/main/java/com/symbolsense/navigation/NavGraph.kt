@@ -118,7 +118,10 @@ fun SymbolSenseNavGraph(
             ImagePreviewScreen(
                 imageUri = currentImageUri?.let(Uri::parse),
                 onBack = { navController.popBackStack() },
-                onConfirm = { showDomain = true }
+                onConfirm = { croppedUri ->
+                    currentImageUri = croppedUri.toString()
+                    showDomain = true
+                }
             )
 
             if (showDomain) {
