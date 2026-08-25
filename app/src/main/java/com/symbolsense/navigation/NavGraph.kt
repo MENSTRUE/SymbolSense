@@ -10,9 +10,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -44,6 +46,7 @@ fun SymbolSenseNavGraph(
     historyViewModel: ScanHistoryViewModel = viewModel()
 ) {
     val history by historyViewModel.history.collectAsState()
+    var currentImageUri by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun openTab(tab: BottomNavTab) {
         val route = when (tab) {
@@ -102,8 +105,10 @@ fun SymbolSenseNavGraph(
         composable(Screen.Camera.route) {
             CameraScreen(
                 onClose = { navController.popBackStack() },
-                onCapture = { navController.navigate(Screen.Preview.route) },
-                onOpenGallery = { navController.navigate(Screen.Preview.route) }
+                onImageReady = { uri ->
+                    currentImageUri = uri.toString()
+                    navController.navigate(Screen.Preview.route)
+                }
             )
         }
 
@@ -111,6 +116,7 @@ fun SymbolSenseNavGraph(
             var showDomain by remember { mutableStateOf(false) }
 
             ImagePreviewScreen(
+                imageUri = currentImageUri?.let(Uri::parse),
                 onBack = { navController.popBackStack() },
                 onConfirm = { showDomain = true }
             )
@@ -149,7 +155,9 @@ fun SymbolSenseNavGraph(
         composable(Screen.Editor.route) { entry ->
             val scanId = entry.arguments?.getString("scanId")
             val result = when {
-                scanId == SampleData.mathResult.id -> SampleData.mathResult
+                scanId == SampleData.mathResult.id -> SampleData.mathResult.copy(
+                    imageUri = currentImageUri
+                )
                 scanId != null -> history.find { it.id == scanId }
                 else -> null
             }

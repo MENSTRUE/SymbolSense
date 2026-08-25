@@ -3,6 +3,7 @@ package com.symbolsense.navigation;
 import androidx.compose.runtime.Composable;
 import androidx.compose.ui.Alignment;
 import androidx.compose.ui.Modifier;
+import android.net.Uri;
 import androidx.navigation.NavHostController;
 import com.symbolsense.data.model.SampleData;
 import com.symbolsense.data.model.SymbolDomain;
