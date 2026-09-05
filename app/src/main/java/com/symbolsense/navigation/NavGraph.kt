@@ -1,5 +1,6 @@
 package com.symbolsense.navigation
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -15,13 +16,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.symbolsense.ai.SymbolRecognitionResult
+import com.symbolsense.data.model.DetectedSymbol
+import com.symbolsense.data.model.RelativeBoundingBox
 import com.symbolsense.data.model.SampleData
+import com.symbolsense.data.model.ScanResult
 import com.symbolsense.data.model.SymbolDomain
 import com.symbolsense.ui.components.BottomNavTab
 import com.symbolsense.ui.screens.camera.CameraScreen
@@ -46,258 +50,1071 @@ fun SymbolSenseNavGraph(
     navController: NavHostController = rememberNavController(),
     historyViewModel: ScanHistoryViewModel = viewModel()
 ) {
-    val history by historyViewModel.history.collectAsState()
-    var currentImageUri by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val context = LocalContext.current
-    val onboardingPrefs = remember {
-        context.getSharedPreferences("symbolsense_onboarding", android.content.Context.MODE_PRIVATE)
-    }
-    var onboardingCompleted by remember {
-        mutableStateOf(onboardingPrefs.getBoolean("completed", false))
+    val history by
+    historyViewModel.history.collectAsState()
+
+    /*
+     * =========================================================
+     * CURRENT SCAN STATE
+     * =========================================================
+     */
+
+    var currentImageUri by
+    rememberSaveable {
+
+        mutableStateOf<String?>(
+            null
+        )
     }
 
-    fun openTab(tab: BottomNavTab) {
-        val route = when (tab) {
-            BottomNavTab.HOME -> Screen.Home.route
-            BottomNavTab.SCAN -> Screen.Camera.route
-            BottomNavTab.LIBRARY -> Screen.Library.route
-            BottomNavTab.HISTORY -> Screen.History.route
+    var currentAiResult by
+    remember {
+
+        mutableStateOf<SymbolRecognitionResult?>(
+            null
+        )
+    }
+
+    var currentLiveResult by
+    remember {
+
+        mutableStateOf<ScanResult?>(
+            null
+        )
+    }
+
+    /*
+     * =========================================================
+     * ONBOARDING
+     * =========================================================
+     */
+
+    val context =
+        LocalContext.current
+
+    val onboardingPrefs =
+        remember {
+
+            context.getSharedPreferences(
+                "symbolsense_onboarding",
+                android.content.Context.MODE_PRIVATE
+            )
         }
 
-        navController.navigate(route) {
+    var onboardingCompleted by
+    remember {
+
+        mutableStateOf(
+            onboardingPrefs.getBoolean(
+                "completed",
+                false
+            )
+        )
+    }
+
+    /*
+     * =========================================================
+     * ROOT NAVIGATION
+     * =========================================================
+     *
+     * Tidak pakai saveState/restoreState dahulu.
+     *
+     * Ini supaya route lama:
+     *
+     * Camera
+     * Preview
+     * Detection
+     * Editor
+     *
+     * tidak direstore ketika pindah tab.
+     */
+
+    fun openTab(
+        tab: BottomNavTab
+    ) {
+
+        val route =
+            when (tab) {
+
+                BottomNavTab.HOME ->
+                    Screen.Home.route
+
+                BottomNavTab.SCAN ->
+                    Screen.Camera.route
+
+                BottomNavTab.LIBRARY ->
+                    Screen.Library.route
+
+                BottomNavTab.HISTORY ->
+                    Screen.History.route
+            }
+
+        navController.navigate(
+            route
+        ) {
+
             launchSingleTop = true
-            restoreState = true
-            popUpTo(Screen.Home.route) {
-                saveState = true
+
+            popUpTo(
+                Screen.Home.route
+            ) {
+
+                inclusive = false
             }
         }
     }
+
+    /*
+     * =========================================================
+     * NAV HOST
+     * =========================================================
+     */
 
     NavHost(
-        navController = navController,
-        startDestination = Screen.Splash.route
+        navController =
+            navController,
+        startDestination =
+            Screen.Splash.route
     ) {
-        composable(Screen.Splash.route) {
+
+        /*
+         * =====================================================
+         * SPLASH
+         * =====================================================
+         */
+
+        composable(
+            Screen.Splash.route
+        ) {
+
             SplashScreen(
                 onTimeout = {
-                    val destination = if (onboardingCompleted) {
-                        Screen.Home.route
-                    } else {
-                        Screen.Onboarding.route
-                    }
 
-                    navController.navigate(destination) {
-                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    val destination =
+                        if (
+                            onboardingCompleted
+                        ) {
+
+                            Screen.Home.route
+
+                        } else {
+
+                            Screen.Onboarding.route
+                        }
+
+                    navController.navigate(
+                        destination
+                    ) {
+
+                        popUpTo(
+                            Screen.Splash.route
+                        ) {
+
+                            inclusive = true
+                        }
                     }
                 }
             )
         }
 
-        composable(Screen.Onboarding.route) {
-            OnboardingScreen {
-                onboardingPrefs.edit().putBoolean("completed", true).apply()
-                onboardingCompleted = true
+        /*
+         * =====================================================
+         * ONBOARDING
+         * =====================================================
+         */
 
-                navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Onboarding.route) { inclusive = true }
+        composable(
+            Screen.Onboarding.route
+        ) {
+
+            OnboardingScreen {
+
+                onboardingPrefs
+                    .edit()
+                    .putBoolean(
+                        "completed",
+                        true
+                    )
+                    .apply()
+
+                onboardingCompleted =
+                    true
+
+                navController.navigate(
+                    Screen.Home.route
+                ) {
+
+                    popUpTo(
+                        Screen.Onboarding.route
+                    ) {
+
+                        inclusive = true
+                    }
                 }
             }
         }
 
-        composable(Screen.Home.route) {
-            HomeScreen(
-                selectedTab = BottomNavTab.HOME,
-                recentHistory = history.take(3),
-                onTabSelected = ::openTab,
-                onOpenCamera = { navController.navigate(Screen.Camera.route) },
-                onOpenHistory = { navController.navigate(Screen.History.route) },
-                onOpenHistoryDetail = { scanId ->
-                    navController.navigate(Screen.HistoryDetail.build(scanId))
-                },
-                onOpenLibrary = { navController.navigate(Screen.Library.route) },
-                onOpenSettings = { navController.navigate(Screen.Settings.route) }
-            )
-        }
+        /*
+         * =====================================================
+         * HOME
+         * =====================================================
+         */
 
-        composable(Screen.Camera.route) {
-            CameraScreen(
-                onClose = { navController.popBackStack() },
-                onImageReady = { uri ->
-                    currentImageUri = uri.toString()
-                    navController.navigate(Screen.Preview.route)
+        composable(
+            Screen.Home.route
+        ) {
+
+            HomeScreen(
+                selectedTab =
+                    BottomNavTab.HOME,
+
+                recentHistory =
+                    history.take(3),
+
+                onTabSelected =
+                    ::openTab,
+
+                onOpenCamera = {
+
+                    openTab(
+                        BottomNavTab.SCAN
+                    )
+                },
+
+                onOpenHistory = {
+
+                    openTab(
+                        BottomNavTab.HISTORY
+                    )
+                },
+
+                onOpenHistoryDetail = { scanId ->
+
+                    navController.navigate(
+                        Screen.HistoryDetail.build(
+                            scanId
+                        )
+                    )
+                },
+
+                onOpenLibrary = {
+
+                    openTab(
+                        BottomNavTab.LIBRARY
+                    )
+                },
+
+                onOpenSettings = {
+
+                    navController.navigate(
+                        Screen.Settings.route
+                    )
                 }
             )
         }
 
-        composable(Screen.Preview.route) {
-            var showDomain by remember { mutableStateOf(false) }
+        /*
+         * =====================================================
+         * CAMERA
+         * =====================================================
+         */
+
+        composable(
+            Screen.Camera.route
+        ) {
+
+            CameraScreen(
+
+                onClose = {
+
+                    navController.popBackStack()
+                },
+
+                onImageReady = { uri ->
+
+                    /*
+                     * Scan baru.
+                     */
+                    currentAiResult =
+                        null
+
+                    currentLiveResult =
+                        null
+
+                    currentImageUri =
+                        uri.toString()
+
+                    navController.navigate(
+                        Screen.Preview.route
+                    )
+                }
+            )
+        }
+
+        /*
+         * =====================================================
+         * PREVIEW / CROP
+         * =====================================================
+         */
+
+        composable(
+            Screen.Preview.route
+        ) {
+
+            var showDomain by
+            remember {
+
+                mutableStateOf(
+                    false
+                )
+            }
 
             ImagePreviewScreen(
-                imageUri = currentImageUri?.let(Uri::parse),
-                onBack = { navController.popBackStack() },
+
+                imageUri =
+                    currentImageUri
+                        ?.let(
+                            Uri::parse
+                        ),
+
+                onBack = {
+
+                    navController.popBackStack()
+                },
+
                 onConfirm = { croppedUri ->
-                    currentImageUri = croppedUri.toString()
-                    showDomain = true
+
+                    /*
+                     * INI gambar yang dikirim
+                     * ke classifier.
+                     */
+                    currentImageUri =
+                        croppedUri.toString()
+
+                    currentAiResult =
+                        null
+
+                    currentLiveResult =
+                        null
+
+                    showDomain =
+                        true
                 }
             )
 
             if (showDomain) {
+
                 DomainConfirmationSheet(
-                    detectedDomain = SymbolDomain.MATH,
-                    confidence = 0.94f,
-                    onDismiss = { showDomain = false },
+
+                    detectedDomain =
+                        SymbolDomain.MATH,
+
+                    /*
+                     * Domain detection sendiri
+                     * belum model AI.
+                     *
+                     * Untuk tahap sekarang kita memang
+                     * hanya Mathematics.
+                     */
+                    confidence =
+                        0.94f,
+
+                    onDismiss = {
+
+                        showDomain =
+                            false
+                    },
+
                     onProcess = {
-                        showDomain = false
-                        navController.navigate(Screen.Processing.route)
+
+                        showDomain =
+                            false
+
+                        navController.navigate(
+                            Screen.Processing.route
+                        )
                     }
                 )
             }
         }
 
-        composable(Screen.Processing.route) {
-            ProcessingScreen {
-                navController.navigate(Screen.Detection.route) {
-                    popUpTo(Screen.Processing.route) { inclusive = true }
-                }
-            }
-        }
+        /*
+         * =====================================================
+         * PROCESSING
+         * =====================================================
+         */
 
-        composable(Screen.Detection.route) {
-            DetectionResultScreen(
-                symbols = SampleData.detectedSymbols,
-                onBack = { navController.popBackStack() },
-                onViewStructuredResult = {
-                    navController.navigate(Screen.Editor.build(SampleData.mathResult.id))
+        composable(
+            Screen.Processing.route
+        ) {
+
+            val imageUri =
+                currentImageUri
+                    ?.let(
+                        Uri::parse
+                    )
+
+            ProcessingScreen(
+
+                imageUri =
+                    imageUri,
+
+                onDone = { result ->
+
+                    /*
+                     * =========================================
+                     * REAL TFLITE RESULT
+                     * =========================================
+                     */
+
+                    currentAiResult =
+                        result
+
+                    val now =
+                        System.currentTimeMillis()
+
+                    /*
+                     * =========================================
+                     * SAVE BEST AI CLASS AS DetectedSymbol
+                     * =========================================
+                     *
+                     * Classifier V2 belum punya detector bbox.
+                     *
+                     * Jadi bbox 0..1 berarti:
+                     *
+                     * "SELURUH CROP INI diklasifikasikan
+                     * sebagai satu simbol."
+                     *
+                     * Ini BUKAN bbox hasil object detector.
+                     */
+
+                    val detectedSymbol =
+                        DetectedSymbol(
+                            "ai_${result.best.id}_$now",
+                            result.best.name,
+                            result.best.display,
+                            result.best.confidence,
+                            RelativeBoundingBox(
+                                0f,
+                                0f,
+                                1f,
+                                1f
+                            )
+                        )
+
+                    /*
+                     * =========================================
+                     * BUILD REAL SCAN RESULT
+                     * =========================================
+                     */
+
+                    currentLiveResult =
+                        SampleData
+                            .mathResult
+                            .copy(
+
+                                id =
+                                    "live_math_$now",
+
+                                timestampLabel =
+                                    "Baru saja",
+
+                                rawPreviewText =
+                                    result.best.display,
+
+                                structuredOutput =
+                                    result.best.display,
+
+                                latexOrCode =
+                                    result.best.latex,
+
+                                detectedSymbols =
+                                    listOf(
+                                        detectedSymbol
+                                    ),
+
+                                imageUri =
+                                    currentImageUri
+                            )
+
+                    /*
+                     * Debug log.
+                     */
+
+                    println(
+                        "========================================"
+                    )
+
+                    println(
+                        "SYMBOLSENSE REAL AI"
+                    )
+
+                    println(
+                        "IMAGE      : $currentImageUri"
+                    )
+
+                    println(
+                        "ID         : ${result.best.id}"
+                    )
+
+                    println(
+                        "NAME       : ${result.best.name}"
+                    )
+
+                    println(
+                        "DISPLAY    : ${result.best.display}"
+                    )
+
+                    println(
+                        "LATEX      : ${result.best.latex}"
+                    )
+
+                    println(
+                        "CONFIDENCE : ${result.best.confidence}"
+                    )
+
+                    println(
+                        "RELIABLE   : ${result.reliable}"
+                    )
+
+                    println(
+                        "TIME       : ${result.inferenceTimeMs} ms"
+                    )
+
+                    println(
+                        "========================================"
+                    )
+
+                    navController.navigate(
+                        Screen.Detection.route
+                    ) {
+
+                        popUpTo(
+                            Screen.Processing.route
+                        ) {
+
+                            inclusive = true
+                        }
+                    }
+                },
+
+                onError = { throwable ->
+
+                    println(
+                        "========================================"
+                    )
+
+                    println(
+                        "SYMBOLSENSE AI ERROR"
+                    )
+
+                    println(
+                        throwable.message
+                    )
+
+                    throwable.printStackTrace()
+
+                    println(
+                        "========================================"
+                    )
                 }
             )
         }
 
-        composable(Screen.Editor.route) { entry ->
-            val scanId = entry.arguments?.getString("scanId")
-            val result = when {
-                scanId == SampleData.mathResult.id -> SampleData.mathResult.copy(
-                    imageUri = currentImageUri
-                )
-                scanId != null -> history.find { it.id == scanId }
-                else -> null
-            }
+        /*
+         * =====================================================
+         * DETECTION RESULT
+         * =====================================================
+         */
 
-            if (result == null) {
+        composable(
+            Screen.Detection.route
+        ) {
+
+            val aiResult =
+                currentAiResult
+
+            if (
+                aiResult == null
+            ) {
+
                 LoadingHistoryItem()
+
             } else {
-                var showExport by remember { mutableStateOf(false) }
 
-                ResultEditorScreen(
-                    result = result,
-                    onBack = { navController.popBackStack() },
-                    onShare = { showExport = true },
-                    onOpenHistory = {
-                        historyViewModel.saveScan(result) {
-                            navController.navigate(Screen.History.route) {
-                                launchSingleTop = true
-                            }
-                        }
+                DetectionResultScreen(
+
+                    result =
+                        aiResult,
+
+                    imageUri =
+                        currentImageUri
+                            ?.let(
+                                Uri::parse
+                            ),
+
+                    onBack = {
+
+                        navController.popBackStack()
                     },
-                    onExport = { showExport = true }
-                )
 
-                if (showExport) {
-                    val label = when (result.domain) {
-                        SymbolDomain.MATH -> "LaTeX"
-                        SymbolDomain.CHEMISTRY -> "SMILES"
-                        SymbolDomain.ELECTRONICS -> "Netlist"
-                        else -> "Teks"
+                    onViewStructuredResult = {
+
+                        val liveResult =
+                            currentLiveResult
+
+                        if (
+                            liveResult != null
+                        ) {
+
+                            navController.navigate(
+                                Screen.Editor.build(
+                                    liveResult.id
+                                )
+                            )
+                        }
+                    }
+                )
+            }
+        }
+
+        /*
+         * =====================================================
+         * EDITOR / STRUCTURED RESULT
+         * =====================================================
+         */
+
+        composable(
+            Screen.Editor.route
+        ) { entry ->
+
+            val scanId =
+                entry.arguments
+                    ?.getString(
+                        "scanId"
+                    )
+
+            val result =
+                when {
+
+                    /*
+                     * Scan yang baru saja dilakukan.
+                     */
+                    scanId != null &&
+                            scanId ==
+                            currentLiveResult?.id -> {
+
+                        currentLiveResult
                     }
 
+                    /*
+                     * Scan dari Room / history.
+                     */
+                    scanId != null -> {
+
+                        history.find {
+                            it.id == scanId
+                        }
+                    }
+
+                    else -> {
+
+                        null
+                    }
+                }
+
+            if (
+                result == null
+            ) {
+
+                LoadingHistoryItem()
+
+            } else {
+
+                var showExport by
+                remember {
+
+                    mutableStateOf(
+                        false
+                    )
+                }
+
+                ResultEditorScreen(
+
+                    result =
+                        result,
+
+                    onBack = {
+
+                        navController.popBackStack()
+                    },
+
+                    onShare = {
+
+                        showExport =
+                            true
+                    },
+
+                    /*
+                     * =========================================
+                     * SAVE REAL RESULT TO ROOM
+                     * =========================================
+                     */
+
+                    onOpenHistory = {
+
+                        historyViewModel
+                            .saveScan(
+                                result
+                            ) {
+
+                                /*
+                                 * Bersihkan scan flow.
+                                 *
+                                 * Hasil:
+                                 *
+                                 * Home
+                                 * ↓
+                                 * History
+                                 *
+                                 * Tidak:
+                                 *
+                                 * Home
+                                 * Camera
+                                 * Preview
+                                 * Detection
+                                 * Editor
+                                 * History
+                                 */
+
+                                navController.navigate(
+                                    Screen.History.route
+                                ) {
+
+                                    launchSingleTop =
+                                        true
+
+                                    popUpTo(
+                                        Screen.Home.route
+                                    ) {
+
+                                        inclusive =
+                                            false
+                                    }
+                                }
+
+                                /*
+                                 * Scan sudah masuk Room.
+                                 * Runtime state boleh dibersihkan.
+                                 */
+
+                                currentAiResult =
+                                    null
+
+                                currentLiveResult =
+                                    null
+
+                                currentImageUri =
+                                    null
+                            }
+                    },
+
+                    onExport = {
+
+                        showExport =
+                            true
+                    }
+                )
+
+                if (
+                    showExport
+                ) {
+
+                    val label =
+                        when (
+                            result.domain
+                        ) {
+
+                            SymbolDomain.MATH ->
+                                "LaTeX"
+
+                            SymbolDomain.CHEMISTRY ->
+                                "SMILES"
+
+                            SymbolDomain.ELECTRONICS ->
+                                "Netlist"
+
+                            else ->
+                                "Teks"
+                        }
+
                     ExportBottomSheet(
-                        codeLabel = label,
-                        onDismiss = { showExport = false },
-                        onAction = { showExport = false }
+
+                        codeLabel =
+                            label,
+
+                        onDismiss = {
+
+                            showExport =
+                                false
+                        },
+
+                        onAction = {
+
+                            showExport =
+                                false
+                        }
                     )
                 }
             }
         }
 
-        composable(Screen.History.route) {
+        /*
+         * =====================================================
+         * HISTORY
+         * =====================================================
+         */
+
+        composable(
+            Screen.History.route
+        ) {
+
             HistoryScreen(
-                selectedTab = BottomNavTab.HISTORY,
-                historyItems = history,
-                onTabSelected = ::openTab,
+
+                selectedTab =
+                    BottomNavTab.HISTORY,
+
+                historyItems =
+                    history,
+
+                onTabSelected =
+                    ::openTab,
+
                 onOpenDetail = { scanId ->
-                    navController.navigate(Screen.HistoryDetail.build(scanId))
+
+                    navController.navigate(
+                        Screen.HistoryDetail.build(
+                            scanId
+                        )
+                    )
                 }
             )
         }
 
-        composable(Screen.HistoryDetail.route) { entry ->
-            val scanId = entry.arguments?.getString("scanId")
-            val result = scanId?.let { id -> history.find { it.id == id } }
+        /*
+         * =====================================================
+         * HISTORY DETAIL
+         * =====================================================
+         */
 
-            if (result == null) {
-                LoadingHistoryItem()
-            } else {
-                HistoryDetailScreen(
-                    result = result,
-                    onBack = { navController.popBackStack() },
-                    onDelete = {
-                        historyViewModel.deleteScan(result.id) {
-                            navController.popBackStack()
+        composable(
+            Screen.HistoryDetail.route
+        ) { entry ->
+
+            val scanId =
+                entry.arguments
+                    ?.getString(
+                        "scanId"
+                    )
+
+            val result =
+                scanId
+                    ?.let { id ->
+
+                        history.find {
+                            it.id == id
                         }
+                    }
+
+            if (
+                result == null
+            ) {
+
+                LoadingHistoryItem()
+
+            } else {
+
+                HistoryDetailScreen(
+
+                    result =
+                        result,
+
+                    onBack = {
+
+                        navController.popBackStack()
                     },
+
+                    onDelete = {
+
+                        historyViewModel
+                            .deleteScan(
+                                result.id
+                            ) {
+
+                                navController
+                                    .popBackStack()
+                            }
+                    },
+
                     onExport = {
-                        navController.navigate(Screen.Editor.build(result.id))
+
+                        navController.navigate(
+                            Screen.Editor.build(
+                                result.id
+                            )
+                        )
                     }
                 )
             }
         }
 
-        composable(Screen.Library.route) {
+        /*
+         * =====================================================
+         * SYMBOL LIBRARY
+         * =====================================================
+         */
+
+        composable(
+            Screen.Library.route
+        ) {
+
             SymbolLibraryScreen(
-                selectedTab = BottomNavTab.LIBRARY,
-                onTabSelected = ::openTab,
+
+                selectedTab =
+                    BottomNavTab.LIBRARY,
+
+                onTabSelected =
+                    ::openTab,
+
                 onOpenSymbol = { symbolId ->
-                    navController.navigate(Screen.SymbolDetail.build(symbolId))
+
+                    navController.navigate(
+                        Screen.SymbolDetail.build(
+                            symbolId
+                        )
+                    )
                 }
             )
         }
 
-        composable(Screen.SymbolDetail.route) { entry ->
-            val id = entry.arguments?.getString("symbolId")
-            val symbol = SampleData.symbolLibrary.find { it.id == id }
-                ?: SampleData.symbolLibrary.first()
+        /*
+         * =====================================================
+         * SYMBOL DETAIL
+         * =====================================================
+         */
+
+        composable(
+            Screen.SymbolDetail.route
+        ) { entry ->
+
+            val id =
+                entry.arguments
+                    ?.getString(
+                        "symbolId"
+                    )
+
+            /*
+             * Ini boleh SampleData.
+             *
+             * Karena Symbol Library adalah
+             * static reference library,
+             * bukan output scan AI.
+             */
+
+            val symbol =
+                SampleData
+                    .symbolLibrary
+                    .find {
+                        it.id == id
+                    }
+                    ?: SampleData
+                        .symbolLibrary
+                        .first()
 
             SymbolDetailScreen(
-                entry = symbol,
-                onBack = { navController.popBackStack() },
-                onSpeak = { }
+
+                entry =
+                    symbol,
+
+                onBack = {
+
+                    navController.popBackStack()
+                },
+
+                onSpeak = {
+                    // TODO
+                }
             )
         }
 
-        composable(Screen.Settings.route) {
+        /*
+         * =====================================================
+         * SETTINGS
+         * =====================================================
+         */
+
+        composable(
+            Screen.Settings.route
+        ) {
+
             SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onOpenHistory = { navController.navigate(Screen.History.route) },
-                onClearHistory = { historyViewModel.clearHistory() },
-                onAbout = { }
+
+                onBack = {
+
+                    navController.popBackStack()
+                },
+
+                onOpenHistory = {
+
+                    openTab(
+                        BottomNavTab.HISTORY
+                    )
+                },
+
+                onClearHistory = {
+
+                    historyViewModel
+                        .clearHistory()
+                },
+
+                onAbout = {
+                    // TODO
+                }
             )
         }
     }
 }
 
+
+/*
+ * =============================================================
+ * LOADING
+ * =============================================================
+ */
+
 @Composable
 private fun LoadingHistoryItem() {
+
     Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        modifier =
+            Modifier.fillMaxSize(),
+        contentAlignment =
+            Alignment.Center
     ) {
+
         androidx.compose.foundation.layout.Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment =
+                Alignment.CenterHorizontally
         ) {
+
             CircularProgressIndicator()
+
             Text(
-                text = "Memuat data...",
-                style = MaterialTheme.typography.bodySmall
+                text =
+                    "Memuat data...",
+                style =
+                    MaterialTheme.typography.bodySmall
             )
         }
     }

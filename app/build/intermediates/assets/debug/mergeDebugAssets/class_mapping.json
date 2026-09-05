@@ -1,0 +1,206 @@
+{
+  "version": "symbolsense_math_v1_v2_v3",
+  "candidate_classes": 37,
+  "num_active_classes": 32,
+  "classes": [
+    {
+      "id": 0,
+      "name": "0",
+      "display": "0",
+      "latex": "0"
+    },
+    {
+      "id": 1,
+      "name": "1",
+      "display": "1",
+      "latex": "1"
+    },
+    {
+      "id": 2,
+      "name": "2",
+      "display": "2",
+      "latex": "2"
+    },
+    {
+      "id": 3,
+      "name": "3",
+      "display": "3",
+      "latex": "3"
+    },
+    {
+      "id": 4,
+      "name": "4",
+      "display": "4",
+      "latex": "4"
+    },
+    {
+      "id": 5,
+      "name": "5",
+      "display": "5",
+      "latex": "5"
+    },
+    {
+      "id": 6,
+      "name": "6",
+      "display": "6",
+      "latex": "6"
+    },
+    {
+      "id": 7,
+      "name": "7",
+      "display": "7",
+      "latex": "7"
+    },
+    {
+      "id": 8,
+      "name": "8",
+      "display": "8",
+      "latex": "8"
+    },
+    {
+      "id": 9,
+      "name": "9",
+      "display": "9",
+      "latex": "9"
+    },
+    {
+      "id": 10,
+      "name": "plus",
+      "display": "+",
+      "latex": "+"
+    },
+    {
+      "id": 11,
+      "name": "minus",
+      "display": "-",
+      "latex": "-"
+    },
+    {
+      "id": 12,
+      "name": "times",
+      "display": "×",
+      "latex": "\\times"
+    },
+    {
+      "id": 13,
+      "name": "divide",
+      "display": "÷",
+      "latex": "\\div"
+    },
+    {
+      "id": 14,
+      "name": "less_than",
+      "display": "<",
+      "latex": "<"
+    },
+    {
+      "id": 15,
+      "name": "greater_than",
+      "display": ">",
+      "latex": ">"
+    },
+    {
+      "id": 16,
+      "name": "less_equal",
+      "display": "≤",
+      "latex": "\\leq"
+    },
+    {
+      "id": 17,
+      "name": "greater_equal",
+      "display": "≥",
+      "latex": "\\geq"
+    },
+    {
+      "id": 18,
+      "name": "lbracket",
+      "display": "[",
+      "latex": "["
+    },
+    {
+      "id": 19,
+      "name": "rbracket",
+      "display": "]",
+      "latex": "]"
+    },
+    {
+      "id": 20,
+      "name": "x",
+      "display": "x",
+      "latex": "x"
+    },
+    {
+      "id": 21,
+      "name": "y",
+      "display": "y",
+      "latex": "y"
+    },
+    {
+      "id": 22,
+      "name": "z",
+      "display": "z",
+      "latex": "z"
+    },
+    {
+      "id": 23,
+      "name": "a",
+      "display": "a",
+      "latex": "a"
+    },
+    {
+      "id": 24,
+      "name": "b",
+      "display": "b",
+      "latex": "b"
+    },
+    {
+      "id": 25,
+      "name": "sqrt",
+      "display": "√",
+      "latex": "\\sqrt"
+    },
+    {
+      "id": 26,
+      "name": "integral",
+      "display": "∫",
+      "latex": "\\int"
+    },
+    {
+      "id": 27,
+      "name": "pi",
+      "display": "π",
+      "latex": "\\pi"
+    },
+    {
+      "id": 28,
+      "name": "infinity",
+      "display": "∞",
+      "latex": "\\infty"
+    },
+    {
+      "id": 29,
+      "name": "sum",
+      "display": "Σ",
+      "latex": "\\sum"
+    },
+    {
+      "id": 30,
+      "name": "d",
+      "display": "d",
+      "latex": "d"
+    },
+    {
+      "id": 31,
+      "name": "e",
+      "display": "e",
+      "latex": "e"
+    }
+  ],
+  "excluded_candidate_classes": [
+    "equal",
+    "lparen",
+    "rparen",
+    "dot",
+    "comma"
+  ]
+}

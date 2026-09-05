@@ -1,11 +1,15 @@
 package com.symbolsense.navigation;
 
+import android.net.Uri;
 import androidx.compose.runtime.Composable;
 import androidx.compose.ui.Alignment;
 import androidx.compose.ui.Modifier;
-import android.net.Uri;
 import androidx.navigation.NavHostController;
+import com.symbolsense.ai.SymbolRecognitionResult;
+import com.symbolsense.data.model.DetectedSymbol;
+import com.symbolsense.data.model.RelativeBoundingBox;
 import com.symbolsense.data.model.SampleData;
+import com.symbolsense.data.model.ScanResult;
 import com.symbolsense.data.model.SymbolDomain;
 import com.symbolsense.ui.components.BottomNavTab;
 import com.symbolsense.ui.viewmodel.ScanHistoryViewModel;
