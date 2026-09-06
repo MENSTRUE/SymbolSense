@@ -2,13 +2,11 @@ package com.symbolsense.ui.screens.historydetail
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,9 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.symbolsense.data.model.ScanResult
 import com.symbolsense.ui.components.AppTopBar
 import com.symbolsense.ui.components.ConfidenceText
@@ -39,7 +35,6 @@ import com.symbolsense.ui.components.domainCodeLabel
 import com.symbolsense.ui.theme.CodeBlack
 import com.symbolsense.ui.theme.SymbolMono
 import com.symbolsense.ui.theme.TextSecondaryLight
-import com.symbolsense.ui.theme.TextTertiaryLight
 
 @Composable
 fun HistoryDetailScreen(
@@ -57,68 +52,33 @@ fun HistoryDetailScreen(
             )
     ) {
 
+        /*
+         * =====================================================
+         * TOP BAR
+         * =====================================================
+         */
+
         AppTopBar(
-            title = "Detail riwayat",
+            title =
+                "Detail riwayat",
             subtitle =
                 result.timestampLabel,
-            onBack = onBack
+            onBack =
+                onBack
         )
+
+        /*
+         * =====================================================
+         * CONTENT
+         * =====================================================
+         */
 
         LazyColumn(
             modifier =
-                Modifier.weight(1f)
+                Modifier.weight(
+                    1f
+                )
         ) {
-
-            /*
-             * =================================================
-             * SCANNED IMAGE
-             * =================================================
-             */
-
-            if (!result.imageUri.isNullOrBlank()) {
-
-                item {
-
-                    SectionLabel(
-                        "Gambar yang dipindai"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(190.dp)
-                            .padding(
-                                horizontal = 16.dp,
-                                vertical = 8.dp
-                            )
-                            .background(
-                                MaterialTheme.colorScheme.surface,
-                                MaterialTheme.shapes.medium
-                            ),
-                        contentAlignment =
-                            Alignment.Center
-                    ) {
-
-                        AsyncImage(
-                            model =
-                                result.imageUri,
-                            contentDescription =
-                                "Gambar riwayat",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(8.dp),
-                            contentScale =
-                                ContentScale.Fit
-                        )
-                    }
-                }
-            }
-
-            /*
-             * =================================================
-             * CONTENT
-             * =================================================
-             */
 
             item {
 
@@ -135,7 +95,9 @@ fun HistoryDetailScreen(
                         .background(
                             MaterialTheme.colorScheme.surface
                         )
-                        .padding(16.dp)
+                        .padding(
+                            16.dp
+                        )
                 ) {
 
                     Text(
@@ -148,7 +110,10 @@ fun HistoryDetailScreen(
                     )
 
                     Spacer(
-                        Modifier.size(6.dp)
+                        modifier =
+                            Modifier.size(
+                                6.dp
+                            )
                     )
 
                     Text(
@@ -177,94 +142,63 @@ fun HistoryDetailScreen(
                 )
             }
 
-            if (
-                result.detectedSymbols.isEmpty()
-            ) {
+            itemsIndexed(
+                result.detectedSymbols
+            ) { index, symbol ->
 
-                item {
+                if (index > 0) {
 
-                    Text(
-                        text =
-                            "Tidak ada simbol yang tersimpan.",
-                        modifier = Modifier.padding(
-                            horizontal = 16.dp,
-                            vertical = 14.dp
-                        ),
-                        style =
-                            MaterialTheme.typography.bodySmall,
-                        color =
-                            TextTertiaryLight
+                    SDivider(
+                        indent = 56
                     )
                 }
 
-            } else {
-
-                itemsIndexed(
-                    result.detectedSymbols
-                ) { index, symbol ->
-
-                    if (index > 0) {
-
-                        SDivider(
-                            indent = 56
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.surface
                         )
-                    }
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = 11.dp
+                        ),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.surface
+                    GlyphTile(
+                        symbol.displayGlyph,
+                        size = 32
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.size(
+                                12.dp
                             )
-                            .padding(
-                                horizontal = 16.dp,
-                                vertical = 11.dp
+                    )
+
+                    Text(
+                        text =
+                            symbol.label,
+                        modifier =
+                            Modifier.weight(
+                                1f
                             ),
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
+                        style =
+                            MaterialTheme.typography.bodyMedium
+                    )
 
-                        GlyphTile(
-                            symbol.displayGlyph,
-                            size = 32
-                        )
-
-                        Spacer(
-                            Modifier.size(12.dp)
-                        )
-
-                        Column(
-                            modifier =
-                                Modifier.weight(1f)
-                        ) {
-
-                            Text(
-                                text =
-                                    symbol.label,
-                                style =
-                                    MaterialTheme.typography.bodyMedium
-                            )
-
-                            Text(
-                                text =
-                                    "Matematika",
-                                style =
-                                    MaterialTheme.typography.bodySmall,
-                                color =
-                                    TextSecondaryLight
-                            )
-                        }
-
-                        ConfidenceText(
-                            symbol.confidence
-                        )
-                    }
+                    ConfidenceText(
+                        symbol.confidence
+                    )
                 }
             }
 
             /*
              * =================================================
-             * STRUCTURED RESULT
+             * STRUCTURED OUTPUT
              * =================================================
              */
 
@@ -277,8 +211,12 @@ fun HistoryDetailScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(CodeBlack)
-                        .padding(16.dp)
+                        .background(
+                            CodeBlack
+                        )
+                        .padding(
+                            16.dp
+                        )
                 ) {
 
                     Text(
@@ -295,7 +233,10 @@ fun HistoryDetailScreen(
                     )
 
                     Spacer(
-                        Modifier.size(8.dp)
+                        modifier =
+                            Modifier.size(
+                                8.dp
+                            )
                     )
 
                     Text(
@@ -312,18 +253,11 @@ fun HistoryDetailScreen(
                     )
                 }
             }
-
-            item {
-
-                Spacer(
-                    Modifier.height(12.dp)
-                )
-            }
         }
 
         /*
          * =====================================================
-         * SAFE BOTTOM ACTION
+         * BOTTOM ACTION
          * =====================================================
          */
 
@@ -341,7 +275,9 @@ fun HistoryDetailScreen(
                     vertical = 12.dp
                 ),
             horizontalArrangement =
-                Arrangement.spacedBy(8.dp),
+                Arrangement.spacedBy(
+                    8.dp
+                ),
             verticalAlignment =
                 Alignment.CenterVertically
         ) {
@@ -362,19 +298,22 @@ fun HistoryDetailScreen(
             Button(
                 onClick =
                     onExport,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(46.dp),
+                modifier =
+                    Modifier.weight(
+                        1f
+                    ),
                 shape =
                     MaterialTheme.shapes.medium,
                 elevation =
                     ButtonDefaults.buttonElevation(
-                        defaultElevation = 0.dp
+                        defaultElevation =
+                            0.dp
                     )
             ) {
 
                 Text(
-                    text = "Ekspor"
+                    text =
+                        "Ekspor"
                 )
             }
         }

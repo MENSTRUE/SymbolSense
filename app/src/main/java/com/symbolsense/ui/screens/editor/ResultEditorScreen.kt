@@ -32,12 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.symbolsense.data.model.ScanResult
 import com.symbolsense.ui.components.AppTopBar
 import com.symbolsense.ui.components.ConfidenceText
@@ -62,7 +58,6 @@ fun ResultEditorScreen(
     onOpenHistory: () -> Unit,
     onExport: () -> Unit
 ) {
-
     var tab by remember {
         mutableStateOf(0)
     }
@@ -70,9 +65,6 @@ fun ResultEditorScreen(
     var copied by remember {
         mutableStateOf(false)
     }
-
-    val clipboard =
-        LocalClipboardManager.current
 
     val codeLabel =
         domainCodeLabel(
@@ -87,20 +79,23 @@ fun ResultEditorScreen(
             )
     ) {
 
+        /*
+         * =====================================================
+         * TOP BAR
+         * =====================================================
+         */
+
         AppTopBar(
             title = "Hasil",
             onBack = onBack,
-            trailingIcon =
-                TrailingAction.SHARE,
-            onTrailingClick =
-                onShare,
-            titleBadge =
-                result.domain.label
+            trailingIcon = TrailingAction.SHARE,
+            onTrailingClick = onShare,
+            titleBadge = result.domain.label
         )
 
         /*
          * =====================================================
-         * TABS
+         * TAB
          * =====================================================
          */
 
@@ -123,7 +118,9 @@ fun ResultEditorScreen(
                         .clickable {
                             tab = index
                         }
-                        .padding(top = 11.dp),
+                        .padding(
+                            top = 11.dp
+                        ),
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
@@ -147,13 +144,18 @@ fun ResultEditorScreen(
                     )
 
                     Spacer(
-                        Modifier.height(9.dp)
+                        modifier =
+                            Modifier.height(
+                                9.dp
+                            )
                     )
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(2.dp)
+                            .height(
+                                2.dp
+                            )
                             .background(
                                 if (tab == index) {
                                     IndigoPrimary
@@ -172,7 +174,7 @@ fun ResultEditorScreen(
 
         /*
          * =====================================================
-         * PREVIEW
+         * PREVIEW TAB
          * =====================================================
          */
 
@@ -180,68 +182,18 @@ fun ResultEditorScreen(
 
             LazyColumn(
                 modifier =
-                    Modifier.weight(1f)
+                    Modifier.weight(
+                        1f
+                    )
             ) {
 
-                /*
-                 * Gambar asli/crop yang masuk model.
-                 */
-
-                if (!result.imageUri.isNullOrBlank()) {
-
-                    item {
-
-                        SectionLabel(
-                            "Gambar yang dipindai"
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(190.dp)
-                                .padding(
-                                    horizontal = 16.dp,
-                                    vertical = 8.dp
-                                )
-                                .background(
-                                    MaterialTheme.colorScheme.surface,
-                                    MaterialTheme.shapes.medium
-                                ),
-                            contentAlignment =
-                                Alignment.Center
-                        ) {
-
-                            AsyncImage(
-                                model =
-                                    result.imageUri,
-                                contentDescription =
-                                    "Gambar hasil crop",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp),
-                                contentScale =
-                                    ContentScale.Fit
-                            )
-                        }
-                    }
-                }
-
-                /*
-                 * Hasil structured current classifier.
-                 */
-
                 item {
-
-                    SectionLabel(
-                        "Hasil pengenalan"
-                    )
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(
-                                horizontal = 16.dp,
-                                vertical = 8.dp
+                                16.dp
                             )
                             .background(
                                 MaterialTheme.colorScheme.surface,
@@ -268,94 +220,63 @@ fun ResultEditorScreen(
                     }
                 }
 
-                /*
-                 * REAL SYMBOLS SAVED IN ScanResult
-                 */
-
                 item {
-
                     SectionLabel(
                         "Simbol yang dikenali"
                     )
                 }
 
-                if (
-                    result.detectedSymbols.isEmpty()
-                ) {
+                itemsIndexed(
+                    result.detectedSymbols
+                ) { index, symbol ->
 
-                    item {
-
-                        Text(
-                            text =
-                                "Belum ada simbol yang tersimpan.",
-                            modifier = Modifier.padding(
-                                horizontal = 16.dp,
-                                vertical = 14.dp
-                            ),
-                            style =
-                                MaterialTheme.typography.bodySmall,
-                            color =
-                                TextTertiaryLight
+                    if (index > 0) {
+                        SDivider(
+                            indent = 56
                         )
                     }
 
-                } else {
-
-                    itemsIndexed(
-                        result.detectedSymbols
-                    ) { index, symbol ->
-
-                        if (index > 0) {
-
-                            SDivider(
-                                indent = 56
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surface
                             )
-                        }
+                            .padding(
+                                horizontal = 16.dp,
+                                vertical = 11.dp
+                            ),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    MaterialTheme.colorScheme.surface
+                        GlyphTile(
+                            symbol.displayGlyph,
+                            size = 32
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.size(
+                                    12.dp
                                 )
-                                .padding(
-                                    horizontal = 16.dp,
-                                    vertical = 11.dp
+                        )
+
+                        Text(
+                            text =
+                                symbol.label,
+                            modifier =
+                                Modifier.weight(
+                                    1f
                                 ),
-                            verticalAlignment =
-                                Alignment.CenterVertically
-                        ) {
+                            style =
+                                MaterialTheme.typography.bodyMedium
+                        )
 
-                            GlyphTile(
-                                symbol.displayGlyph,
-                                size = 32
-                            )
-
-                            Spacer(
-                                Modifier.size(12.dp)
-                            )
-
-                            Text(
-                                text =
-                                    symbol.label,
-                                modifier =
-                                    Modifier.weight(1f),
-                                style =
-                                    MaterialTheme.typography.bodyMedium
-                            )
-
-                            ConfidenceText(
-                                symbol.confidence
-                            )
-                        }
+                        ConfidenceText(
+                            symbol.confidence
+                        )
                     }
-                }
-
-                item {
-
-                    Spacer(
-                        Modifier.height(12.dp)
-                    )
                 }
             }
 
@@ -363,14 +284,18 @@ fun ResultEditorScreen(
 
             /*
              * =================================================
-             * CODE / LATEX TAB
+             * CODE TAB
              * =================================================
              */
 
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(16.dp)
+                    .weight(
+                        1f
+                    )
+                    .padding(
+                        16.dp
+                    )
             ) {
 
                 Column(
@@ -394,7 +319,8 @@ fun ResultEditorScreen(
                     ) {
 
                         Text(
-                            text = codeLabel,
+                            text =
+                                codeLabel,
                             style =
                                 MaterialTheme.typography.labelSmall,
                             color =
@@ -402,22 +328,19 @@ fun ResultEditorScreen(
                                     alpha = 0.38f
                                 ),
                             modifier =
-                                Modifier.weight(1f)
+                                Modifier.weight(
+                                    1f
+                                )
                         )
 
                         Row(
                             modifier = Modifier
                                 .clickable {
-
-                                    clipboard.setText(
-                                        AnnotatedString(
-                                            result.latexOrCode
-                                        )
-                                    )
-
                                     copied = true
                                 }
-                                .padding(5.dp),
+                                .padding(
+                                    5.dp
+                                ),
                             verticalAlignment =
                                 Alignment.CenterVertically
                         ) {
@@ -429,22 +352,28 @@ fun ResultEditorScreen(
                                     } else {
                                         Icons.Filled.ContentCopy
                                     },
-                                contentDescription =
-                                    "Salin",
+                                contentDescription = null,
                                 tint =
                                     if (copied) {
-                                        Color(0xFF4ADE80)
+                                        Color(
+                                            0xFF4ADE80
+                                        )
                                     } else {
                                         Color.White.copy(
                                             alpha = 0.55f
                                         )
                                     },
                                 modifier =
-                                    Modifier.size(14.dp)
+                                    Modifier.size(
+                                        14.dp
+                                    )
                             )
 
                             Spacer(
-                                Modifier.size(5.dp)
+                                modifier =
+                                    Modifier.size(
+                                        5.dp
+                                    )
                             )
 
                             Text(
@@ -458,7 +387,9 @@ fun ResultEditorScreen(
                                     MaterialTheme.typography.labelMedium,
                                 color =
                                     if (copied) {
-                                        Color(0xFF4ADE80)
+                                        Color(
+                                            0xFF4ADE80
+                                        )
                                     } else {
                                         Color.White.copy(
                                             alpha = 0.55f
@@ -486,14 +417,19 @@ fun ResultEditorScreen(
                             ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(
+                                14.dp
+                            ),
                         style =
                             MaterialTheme.typography.bodyMedium
                     )
                 }
 
                 Spacer(
-                    Modifier.height(10.dp)
+                    modifier =
+                        Modifier.height(
+                            10.dp
+                        )
                 )
 
                 Text(
@@ -509,7 +445,11 @@ fun ResultEditorScreen(
 
         /*
          * =====================================================
-         * BOTTOM ACTION SAFE AREA
+         * BOTTOM ACTION
+         *
+         * FIX:
+         * navigationBarsPadding() membuat tombol tidak lagi
+         * ketabrak navigation bar Android.
          * =====================================================
          */
 
@@ -529,23 +469,30 @@ fun ResultEditorScreen(
                     vertical = 12.dp
                 ),
             horizontalArrangement =
-                Arrangement.spacedBy(8.dp)
+                Arrangement.spacedBy(
+                    8.dp
+                )
         ) {
 
             SecondaryActionButton(
                 text = "Simpan",
-                onClick =
-                    onOpenHistory,
+                onClick = onOpenHistory,
                 modifier =
-                    Modifier.weight(1f)
+                    Modifier.weight(
+                        1f
+                    )
             )
 
             Button(
                 onClick =
                     onExport,
                 modifier = Modifier
-                    .weight(1f)
-                    .height(46.dp),
+                    .weight(
+                        1f
+                    )
+                    .height(
+                        46.dp
+                    ),
                 shape =
                     MaterialTheme.shapes.medium,
                 colors =
@@ -555,7 +502,8 @@ fun ResultEditorScreen(
                     ),
                 elevation =
                     ButtonDefaults.buttonElevation(
-                        defaultElevation = 0.dp
+                        defaultElevation =
+                            0.dp
                     )
             ) {
 
