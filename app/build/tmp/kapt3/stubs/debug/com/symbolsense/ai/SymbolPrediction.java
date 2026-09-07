@@ -2,10 +2,8 @@ package com.symbolsense.ai;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ImageDecoder;
-import android.graphics.Paint;
 import android.net.Uri;
 import android.os.Build;
 import android.os.SystemClock;
