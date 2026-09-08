@@ -57,11 +57,47 @@ data class SymbolPrediction(
     val confidence: Float
 )
 
+data class RecognitionBoundingBox(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+) {
+    init {
+        require(left in 0f..1f)
+        require(top in 0f..1f)
+        require(right in 0f..1f)
+        require(bottom in 0f..1f)
+        require(right >= left)
+        require(bottom >= top)
+    }
+}
+
+data class RecognizedSymbol(
+    val prediction: SymbolPrediction,
+    val topK: List<SymbolPrediction>,
+    val detectorConfidence: Float,
+    val boundingBox: RecognitionBoundingBox,
+    val classifierInferenceTimeMs: Double,
+    val reliable: Boolean
+)
+
+enum class RecognitionMode {
+    ISOLATED,
+    MULTI_SYMBOL,
+    DETECTOR_FALLBACK
+}
+
 data class SymbolRecognitionResult(
     val best: SymbolPrediction,
     val topK: List<SymbolPrediction>,
     val inferenceTimeMs: Double,
-    val reliable: Boolean
+    val reliable: Boolean,
+    val symbols: List<RecognizedSymbol> = emptyList(),
+    val structuredDisplay: String = best.display,
+    val structuredLatex: String = best.latex,
+    val detectorInferenceTimeMs: Double = 0.0,
+    val mode: RecognitionMode = RecognitionMode.ISOLATED
 )
 
 class SymbolClassifier(
@@ -140,8 +176,8 @@ class SymbolClassifier(
         val actualNames = labels.map { it.name }
         require(actualNames == EXPECTED_ACTIVE_32) {
             "Urutan class_mapping.json berubah.\n" +
-                    "Expected=$EXPECTED_ACTIVE_32\n" +
-                    "Actual=$actualNames"
+                "Expected=$EXPECTED_ACTIVE_32\n" +
+                "Actual=$actualNames"
         }
 
         require(labels[12].name == "times") {
@@ -154,7 +190,7 @@ class SymbolClassifier(
 
         require(inputShape.contentEquals(intArrayOf(1, 64, 64, 1))) {
             "Model input tidak sesuai. Expected [1,64,64,1], " +
-                    "actual=${inputShape.contentToString()}"
+                "actual=${inputShape.contentToString()}"
         }
 
         require(inputTensor.dataType() == DataType.UINT8) {
@@ -167,7 +203,7 @@ class SymbolClassifier(
 
         require(outputShape.last() == labels.size) {
             "Jumlah output model (${outputShape.last()}) tidak sama dengan " +
-                    "class_mapping.json (${labels.size})."
+                "class_mapping.json (${labels.size})."
         }
 
         require(inputQuantization.scale > 0f) {
@@ -445,7 +481,7 @@ class SymbolClassifier(
 
     private fun Bitmap.isHardwareBitmap(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                config == Bitmap.Config.HARDWARE
+            config == Bitmap.Config.HARDWARE
     }
 
     /**
@@ -476,10 +512,10 @@ class SymbolClassifier(
             val b = Color.blue(color)
 
             val luminance = (
-                    0.299 * r +
-                            0.587 * g +
-                            0.114 * b
-                    )
+                0.299 * r +
+                    0.587 * g +
+                    0.114 * b
+                )
                 .roundToInt()
                 .coerceIn(0, 255)
 
@@ -606,9 +642,9 @@ class SymbolClassifier(
 
         val numerator =
             12.0 * sigma * sigma -
-                    n * wl * wl -
-                    4.0 * n * wl -
-                    3.0 * n
+                n * wl * wl -
+                4.0 * n * wl -
+                3.0 * n
 
         val denominator = -4.0 * wl - 4.0
         val m = (numerator / denominator)
@@ -710,8 +746,8 @@ class SymbolClassifier(
 
                 val value =
                     a * u8(source[row + xl]) +
-                            b * u8(source[row + x]) +
-                            a * u8(source[row + xr])
+                        b * u8(source[row + x]) +
+                        a * u8(source[row + xr])
 
                 horizontal[row + x] = value
                     .roundToInt()
@@ -729,8 +765,8 @@ class SymbolClassifier(
             for (x in 0 until width) {
                 val value =
                     a * u8(horizontal[yu * width + x]) +
-                            b * u8(horizontal[y * width + x]) +
-                            a * u8(horizontal[yd * width + x])
+                        b * u8(horizontal[y * width + x]) +
+                        a * u8(horizontal[yd * width + x])
 
                 output[y * width + x] = value
                     .roundToInt()
@@ -779,8 +815,8 @@ class SymbolClassifier(
             val delta = meanBackground - meanForeground
             val varianceBetween =
                 weightBackground.toDouble() *
-                        weightForeground.toDouble() *
-                        delta * delta
+                    weightForeground.toDouble() *
+                    delta * delta
 
             if (varianceBetween > bestVariance) {
                 bestVariance = varianceBetween
@@ -911,10 +947,10 @@ class SymbolClassifier(
             .take(24)
             .filter { component ->
                 component.area >= minRelativeArea &&
-                        hypot(
-                            component.cx - centerX,
-                            component.cy - centerY
-                        ) <= 1.35 * diagonal
+                    hypot(
+                        component.cx - centerX,
+                        component.cy - centerY
+                    ) <= 1.35 * diagonal
             }
 
         if (keep.isEmpty()) {
@@ -1245,8 +1281,8 @@ class SymbolClassifier(
             val realValue = pixel / 255.0f
 
             val quantized = (
-                    realValue / scale + zeroPoint
-                    )
+                realValue / scale + zeroPoint
+                )
                 .roundToInt()
                 .coerceIn(0, 255)
 

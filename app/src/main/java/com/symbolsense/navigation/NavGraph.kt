@@ -476,32 +476,52 @@ fun SymbolSenseNavGraph(
 
                     /*
                      * =========================================
-                     * SAVE BEST AI CLASS AS DetectedSymbol
+                     * BUILD REAL DETECTED SYMBOL LIST
                      * =========================================
                      *
-                     * Classifier V2 belum punya detector bbox.
+                     * Formula pipeline:
+                     * detector bbox -> classifier -> parser.
                      *
-                     * Jadi bbox 0..1 berarti:
-                     *
-                     * "SELURUH CROP INI diklasifikasikan
-                     * sebagai satu simbol."
-                     *
-                     * Ini BUKAN bbox hasil object detector.
+                     * If result came from an old isolated call,
+                     * keep the previous full-crop fallback.
                      */
 
-                    val detectedSymbol =
-                        DetectedSymbol(
-                            "ai_${result.best.id}_$now",
-                            result.best.name,
-                            result.best.display,
-                            result.best.confidence,
-                            RelativeBoundingBox(
-                                0f,
-                                0f,
-                                1f,
-                                1f
+                    val detectedSymbols =
+                        if (result.symbols.isNotEmpty()) {
+
+                            result.symbols.mapIndexed { index, symbol ->
+
+                                DetectedSymbol(
+                                    id = "ai_${index}_${symbol.prediction.id}_$now",
+                                    label = symbol.prediction.name,
+                                    displayGlyph = symbol.prediction.display,
+                                    confidence = symbol.prediction.confidence,
+                                    boundingBox = RelativeBoundingBox(
+                                        left = symbol.boundingBox.left,
+                                        top = symbol.boundingBox.top,
+                                        right = symbol.boundingBox.right,
+                                        bottom = symbol.boundingBox.bottom
+                                    )
+                                )
+                            }
+
+                        } else {
+
+                            listOf(
+                                DetectedSymbol(
+                                    id = "ai_${result.best.id}_$now",
+                                    label = result.best.name,
+                                    displayGlyph = result.best.display,
+                                    confidence = result.best.confidence,
+                                    boundingBox = RelativeBoundingBox(
+                                        0f,
+                                        0f,
+                                        1f,
+                                        1f
+                                    )
+                                )
                             )
-                        )
+                        }
 
                     /*
                      * =========================================
@@ -521,18 +541,16 @@ fun SymbolSenseNavGraph(
                                     "Baru saja",
 
                                 rawPreviewText =
-                                    result.best.display,
+                                    result.structuredDisplay,
 
                                 structuredOutput =
-                                    result.best.display,
+                                    result.structuredDisplay,
 
                                 latexOrCode =
-                                    result.best.latex,
+                                    result.structuredLatex,
 
                                 detectedSymbols =
-                                    listOf(
-                                        detectedSymbol
-                                    ),
+                                    detectedSymbols,
 
                                 imageUri =
                                     currentImageUri
@@ -547,7 +565,7 @@ fun SymbolSenseNavGraph(
                     )
 
                     println(
-                        "SYMBOLSENSE REAL AI"
+                        "SYMBOLSENSE FORMULA AI"
                     )
 
                     println(
@@ -555,23 +573,19 @@ fun SymbolSenseNavGraph(
                     )
 
                     println(
-                        "ID         : ${result.best.id}"
+                        "MODE       : ${result.mode}"
                     )
 
                     println(
-                        "NAME       : ${result.best.name}"
+                        "SYMBOLS    : ${result.symbols.size}"
                     )
 
                     println(
-                        "DISPLAY    : ${result.best.display}"
+                        "DISPLAY    : ${result.structuredDisplay}"
                     )
 
                     println(
-                        "LATEX      : ${result.best.latex}"
-                    )
-
-                    println(
-                        "CONFIDENCE : ${result.best.confidence}"
+                        "LATEX      : ${result.structuredLatex}"
                     )
 
                     println(
@@ -579,7 +593,11 @@ fun SymbolSenseNavGraph(
                     )
 
                     println(
-                        "TIME       : ${result.inferenceTimeMs} ms"
+                        "DETECTOR   : ${result.detectorInferenceTimeMs} ms"
+                    )
+
+                    println(
+                        "TOTAL      : ${result.inferenceTimeMs} ms"
                     )
 
                     println(

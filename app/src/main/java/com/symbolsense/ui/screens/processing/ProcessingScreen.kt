@@ -38,7 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.symbolsense.ai.SymbolAiEffect
+import com.symbolsense.ai.FormulaAiEffect
 import com.symbolsense.ai.SymbolRecognitionResult
 import com.symbolsense.ui.theme.CyanAccent
 import com.symbolsense.ui.theme.GreenSuccess
@@ -57,8 +57,8 @@ fun ProcessingScreen(
 
     val steps = listOf(
         "Gambar disiapkan",
-        "Menjalankan model AI",
-        "Simbol dikenali",
+        "Mendeteksi simbol",
+        "Mengenali & menyusun rumus",
         "Menyiapkan hasil"
     )
 
@@ -112,7 +112,7 @@ fun ProcessingScreen(
      * =========================================================
      */
 
-    SymbolAiEffect(
+    FormulaAiEffect(
         imageUri = imageUri,
 
         onSuccess = { result ->
@@ -129,6 +129,12 @@ fun ProcessingScreen(
                 TAG,
                 "AI RESULT"
             )
+
+            Log.d(TAG, "mode        = ${result.mode}")
+            Log.d(TAG, "symbols     = ${result.symbols.size}")
+            Log.d(TAG, "expression  = ${result.structuredDisplay}")
+            Log.d(TAG, "latex full  = ${result.structuredLatex}")
+            Log.d(TAG, "detector ms = ${result.detectorInferenceTimeMs}")
 
             Log.d(
                 TAG,
@@ -295,15 +301,16 @@ fun ProcessingScreen(
                                         100f
                                 ).toInt()
 
-                    "Simbol ${
-                        aiResult!!
-                            .best
-                            .display
-                    } dikenali dengan confidence $confidence%."
+                    val count = aiResult!!.symbols.size.coerceAtLeast(1)
+                    if (count == 1) {
+                        "1 simbol dikenali: ${aiResult!!.structuredDisplay} • confidence $confidence%."
+                    } else {
+                        "$count simbol dikenali: ${aiResult!!.structuredDisplay}"
+                    }
                 }
 
                 else -> {
-                    "Menjalankan pengenalan simbol dengan AI."
+                    "Menjalankan detector + classifier matematika."
                 }
             },
 

@@ -1,0 +1,29 @@
+{
+  "name": "SymbolSense Multi-Symbol Detector V1 - Android Runtime Fix V2",
+  "class_agnostic": true,
+  "input_shape": [1, 256, 384, 1],
+  "stride": 4,
+  "grid_shape": [64, 96],
+  "model_asset": "symbolsense_detector_model.tflite",
+  "model_variant": "FP16 weights / FLOAT32 input-output",
+  "decode": {
+    "confidence_threshold": 0.38,
+    "nms_iou_threshold": 0.30,
+    "max_detections": 32,
+    "runtime_max_raw_peaks": 28,
+    "runtime_min_confidence_float": 0.36,
+    "runtime_min_confidence_uint8": 0.50
+  },
+  "classifier_contract": {
+    "asset": "symbolsense_model_int8.tflite",
+    "num_classes": 32,
+    "times_id": 12,
+    "pi_id": 27
+  },
+  "notes": [
+    "Formula preprocessing canonicalizes local contrast to dark ink on white while preserving geometry.",
+    "The detector remains class-agnostic.",
+    "Equal sign is handled as a separate structural token, not added to the exact-32 classifier.",
+    "SpatialParserV2 supports superscripts such as a^2."
+  ]
+}
