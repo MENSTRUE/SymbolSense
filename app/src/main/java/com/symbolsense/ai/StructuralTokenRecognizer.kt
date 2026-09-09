@@ -8,64 +8,38 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Recognizes structural tokens that are intentionally NOT part of the exact
- * 32-class isolated classifier taxonomy.
+ * Separate structural recognizer for tokens intentionally outside the exact
+ * 32-class classifier. V3 scope: '=' only.
  *
- * V2 scope: '=' only.
- *
- * This does not mutate class_mapping.json and does not add a 33rd classifier
- * class. It is a separate deterministic structural stage after detection.
+ * IMPORTANT: this recognizer is intentionally conservative. It is only called
+ * after classifier inference and should not turn arbitrary textured crops into '='.
  */
 object StructuralTokenRecognizer {
 
     private const val EQUAL_ID = -100
 
-    fun recognize(bitmap: Bitmap): SymbolPrediction? {
-        return recognizeEqual(bitmap)
-    }
+    fun recognizeEqual(bitmap: Bitmap): SymbolPrediction? {
+        val aspect = bitmap.width.toFloat() / max(1, bitmap.height).toFloat()
+        if (aspect < 1.10f) return null
 
-    fun isMeaningfulCrop(bitmap: Bitmap): Boolean {
-        val gray = resizeGray(bitmap, 96, 96)
-        val background = borderMedian(gray, 96, 96)
-
-        val contrast = IntArray(gray.size) {
-            abs(gray[it] - background)
-        }
-
-        val p90 = percentile(contrast, 0.90f)
-        val threshold = max(14, (p90 * 0.55f).roundToInt())
-        val foreground = contrast.count { it >= threshold }
-        val ratio = foreground.toFloat() / contrast.size.toFloat()
-
-        return p90 >= 14 && ratio in 0.008f..0.62f
-    }
-
-    private fun recognizeEqual(bitmap: Bitmap): SymbolPrediction? {
         val w = 96
         val h = 96
         val gray = resizeGray(bitmap, w, h)
         val background = borderMedian(gray, w, h)
-        val contrast = IntArray(gray.size) {
-            abs(gray[it] - background)
-        }
+        val contrast = IntArray(gray.size) { abs(gray[it] - background) }
 
-        val p90 = percentile(contrast, 0.90f)
-        val p97 = percentile(contrast, 0.97f)
-        if (p97 < 18) return null
+        val p95 = percentile(contrast, 0.95f)
+        val p99 = percentile(contrast, 0.99f)
+        if (p99 < 24) return null
 
-        val threshold = max(
-            16,
-            ((p90 + p97) * 0.30f).roundToInt()
-        )
-
+        val threshold = max(20, ((p95 + p99) * 0.34f).roundToInt())
         val rowCount = IntArray(h)
         val rowMinX = IntArray(h) { w }
         val rowMaxX = IntArray(h) { -1 }
 
         for (y in 0 until h) {
             for (x in 0 until w) {
-                val c = contrast[y * w + x]
-                if (c >= threshold) {
+                if (contrast[y * w + x] >= threshold) {
                     rowCount[y]++
                     rowMinX[y] = min(rowMinX[y], x)
                     rowMaxX[y] = max(rowMaxX[y], x)
@@ -73,7 +47,6 @@ object StructuralTokenRecognizer {
             }
         }
 
-        // Smooth the projection slightly.
         val smooth = IntArray(h)
         for (y in 0 until h) {
             var sum = 0
@@ -85,42 +58,32 @@ object StructuralTokenRecognizer {
             smooth[y] = sum / max(1, n)
         }
 
-        val rowThreshold = (w * 0.34f).roundToInt()
+        val activeThreshold = (w * 0.40f).roundToInt()
         val bands = mutableListOf<IntRange>()
         var start = -1
 
         for (y in 0 until h) {
-            val active = smooth[y] >= rowThreshold
-
-            if (active && start < 0) {
-                start = y
-            }
-
+            val active = smooth[y] >= activeThreshold
+            if (active && start < 0) start = y
             if ((!active || y == h - 1) && start >= 0) {
                 val end = if (active && y == h - 1) y else y - 1
-                bands += start..end
+                if (end - start + 1 in 1..18) bands += start..end
                 start = -1
             }
         }
 
         if (bands.size < 2) return null
 
-        data class Band(
-            val y1: Int,
-            val y2: Int,
-            val x1: Int,
-            val x2: Int,
-            val strength: Int
-        ) {
-            val centerY: Float get() = (y1 + y2) * 0.5f
+        data class Band(val y1: Int, val y2: Int, val x1: Int, val x2: Int, val strength: Int) {
+            val cy: Float get() = (y1 + y2) * 0.5f
             val width: Int get() = x2 - x1 + 1
+            val thickness: Int get() = y2 - y1 + 1
         }
 
         val candidates = bands.mapNotNull { range ->
             var x1 = w
             var x2 = -1
             var strength = 0
-
             for (y in range) {
                 strength += smooth[y]
                 if (rowMaxX[y] >= 0) {
@@ -128,97 +91,80 @@ object StructuralTokenRecognizer {
                     x2 = max(x2, rowMaxX[y])
                 }
             }
-
-            if (x2 < x1) null
-            else Band(range.first, range.last, x1, x2, strength)
+            if (x2 < x1) null else Band(range.first, range.last, x1, x2, strength)
         }.sortedByDescending { it.strength }
 
-        if (candidates.size < 2) return null
-
-        var bestScore = 0f
-
-        for (i in 0 until min(candidates.size, 5)) {
-            for (j in i + 1 until min(candidates.size, 5)) {
+        var best = 0f
+        for (i in 0 until min(4, candidates.size)) {
+            for (j in i + 1 until min(4, candidates.size)) {
                 val a = candidates[i]
                 val b = candidates[j]
+                val upper = if (a.cy < b.cy) a else b
+                val lower = if (a.cy < b.cy) b else a
 
-                val upper = if (a.centerY < b.centerY) a else b
-                val lower = if (a.centerY < b.centerY) b else a
+                val gap = lower.cy - upper.cy
+                if (gap !in (h * 0.12f)..(h * 0.48f)) continue
+                if (upper.thickness > h * 0.18f || lower.thickness > h * 0.18f) continue
 
-                val verticalGap = lower.centerY - upper.centerY
-                if (verticalGap < h * 0.10f || verticalGap > h * 0.55f) continue
+                val minW = min(upper.width, lower.width).toFloat()
+                val maxW = max(upper.width, lower.width).toFloat()
+                if (minW < w * 0.38f) continue
 
-                val minWidth = min(upper.width, lower.width).toFloat()
-                val maxWidth = max(upper.width, lower.width).toFloat()
-                if (minWidth < w * 0.32f) continue
+                val similarity = minW / max(maxW, 1f)
+                if (similarity < 0.72f) continue
 
-                val widthSimilarity = minWidth / max(maxWidth, 1f)
-                if (widthSimilarity < 0.62f) continue
+                val overlap = max(0, min(upper.x2, lower.x2) - max(upper.x1, lower.x1) + 1).toFloat()
+                val overlapRatio = overlap / max(minW, 1f)
+                if (overlapRatio < 0.76f) continue
 
-                val overlap = max(
-                    0,
-                    min(upper.x2, lower.x2) - max(upper.x1, lower.x1) + 1
-                ).toFloat()
-
-                val overlapRatio = overlap / max(minWidth, 1f)
-                if (overlapRatio < 0.62f) continue
-
-                val score = (
-                    0.55f * widthSimilarity +
-                        0.45f * overlapRatio
-                    ).coerceIn(0f, 1f)
-
-                bestScore = max(bestScore, score)
+                best = max(best, 0.5f * similarity + 0.5f * overlapRatio)
             }
         }
 
-        if (bestScore < 0.68f) return null
+        if (best < 0.80f) return null
 
         return SymbolPrediction(
             id = EQUAL_ID,
             name = "equal",
             display = "=",
             latex = "=",
-            confidence = (0.82f + 0.16f * bestScore).coerceAtMost(0.98f)
+            confidence = (0.86f + 0.12f * best).coerceAtMost(0.98f)
         )
     }
 
-    private fun resizeGray(
-        source: Bitmap,
-        outW: Int,
-        outH: Int
-    ): IntArray {
+    fun isMeaningfulCrop(bitmap: Bitmap): Boolean {
+        if (bitmap.width < 2 || bitmap.height < 2) return false
+        val gray = resizeGray(bitmap, 64, 64)
+        val bg = borderMedian(gray, 64, 64)
+        val contrast = IntArray(gray.size) { abs(gray[it] - bg) }
+        val p95 = percentile(contrast, 0.95f)
+        val threshold = max(18, (p95 * 0.55f).roundToInt())
+        val fg = contrast.count { it >= threshold }
+        val ratio = fg.toFloat() / contrast.size.toFloat()
+        return p95 >= 18 && ratio in 0.012f..0.66f
+    }
+
+    private fun resizeGray(source: Bitmap, outW: Int, outH: Int): IntArray {
         val scaled = Bitmap.createScaledBitmap(source, outW, outH, true)
         val pixels = IntArray(outW * outH)
         scaled.getPixels(pixels, 0, outW, 0, 0, outW, outH)
-
         return IntArray(pixels.size) { i ->
             val c = pixels[i]
-            (
-                0.299 * Color.red(c) +
-                    0.587 * Color.green(c) +
-                    0.114 * Color.blue(c)
-                ).roundToInt().coerceIn(0, 255)
+            (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c))
+                .roundToInt().coerceIn(0, 255)
         }
     }
 
-    private fun borderMedian(
-        gray: IntArray,
-        w: Int,
-        h: Int
-    ): Int {
-        val values = ArrayList<Int>()
-
+    private fun borderMedian(gray: IntArray, w: Int, h: Int): Int {
+        val values = ArrayList<Int>(2 * w + 2 * h)
         for (x in 0 until w) {
             values += gray[x]
             values += gray[(h - 1) * w + x]
         }
-
         for (y in 0 until h) {
             values += gray[y * w]
             values += gray[y * w + (w - 1)]
         }
-
         values.sort()
         return values[values.size / 2]
     }
@@ -226,17 +172,12 @@ object StructuralTokenRecognizer {
     private fun percentile(values: IntArray, p: Float): Int {
         val hist = IntArray(256)
         for (v in values) hist[v.coerceIn(0, 255)]++
-
-        val target = (values.size * p.coerceIn(0f, 1f))
-            .roundToInt()
-            .coerceAtLeast(1)
-
+        val target = max(1, (values.size * p.coerceIn(0f, 1f)).roundToInt())
         var cumulative = 0
         for (i in hist.indices) {
             cumulative += hist[i]
             if (cumulative >= target) return i
         }
-
         return 255
     }
 }

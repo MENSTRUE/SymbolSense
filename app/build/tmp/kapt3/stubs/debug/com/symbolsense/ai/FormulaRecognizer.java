@@ -10,7 +10,7 @@ import android.provider.MediaStore;
 import java.io.Closeable;
 
 /**
- * FormulaRecognition V2 pipeline:
+ * FormulaRecognition V4 pipeline (CROHME Detector V2):
  *
  * image
  * -> robust class-agnostic detector
@@ -30,12 +30,12 @@ public final class FormulaRecognizer implements java.io.Closeable {
     private final android.content.Context context = null;
     private static final int CLASSIFIER_TOP_K = 3;
     private static final float CROP_PADDING_RATIO = 0.12F;
-    private static final float MIN_DETECTOR_CONFIDENCE = 0.34F;
-    private static final float MIN_CLASSIFIER_CONFIDENCE = 0.52F;
-    private static final float STRONG_CLASSIFIER_CONFIDENCE = 0.84F;
-    private static final float MIN_COMBINED_SCORE = 0.22F;
-    private static final int MAX_BOXES_TO_CLASSIFY = 32;
-    private static final int MAX_ACCEPTED_SYMBOLS = 24;
+    private static final float MIN_DETECTOR_CONFIDENCE = 0.35F;
+    private static final float MIN_CLASSIFIER_CONFIDENCE = 0.6F;
+    private static final float STRONG_CLASSIFIER_CONFIDENCE = 0.88F;
+    private static final float MIN_COMBINED_SCORE = 0.3F;
+    private static final int MAX_BOXES_TO_CLASSIFY = 96;
+    private static final int MAX_ACCEPTED_SYMBOLS = 64;
     @org.jetbrains.annotations.NotNull()
     private final com.symbolsense.ai.SymbolDetector detector = null;
     @org.jetbrains.annotations.NotNull()

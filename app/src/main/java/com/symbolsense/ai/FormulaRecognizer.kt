@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * FormulaRecognition V2 pipeline:
+ * FormulaRecognition V4 pipeline (CROHME Detector V2):
  *
  * image
  * -> robust class-agnostic detector
@@ -36,13 +36,13 @@ class FormulaRecognizer(
         private const val CLASSIFIER_TOP_K = 3
         private const val CROP_PADDING_RATIO = 0.12f
 
-        private const val MIN_DETECTOR_CONFIDENCE = 0.34f
-        private const val MIN_CLASSIFIER_CONFIDENCE = 0.52f
-        private const val STRONG_CLASSIFIER_CONFIDENCE = 0.84f
-        private const val MIN_COMBINED_SCORE = 0.22f
+        private const val MIN_DETECTOR_CONFIDENCE = 0.35f
+        private const val MIN_CLASSIFIER_CONFIDENCE = 0.60f
+        private const val STRONG_CLASSIFIER_CONFIDENCE = 0.88f
+        private const val MIN_COMBINED_SCORE = 0.30f
 
-        private const val MAX_BOXES_TO_CLASSIFY = 32
-        private const val MAX_ACCEPTED_SYMBOLS = 24
+        private const val MAX_BOXES_TO_CLASSIFY = 96
+        private const val MAX_ACCEPTED_SYMBOLS = 64
     }
 
     private val detector = SymbolDetector(context.applicationContext)
@@ -83,22 +83,26 @@ class FormulaRecognizer(
                 continue
             }
 
-            val structural = StructuralTokenRecognizer.recognize(crop)
+            // Classifier runs first. The structural '=' recognizer is only allowed
+            // to override a plausible horizontal/operator crop, so textured crops
+            // cannot all turn into '=' before the classifier gets a chance.
+            val classification = classifier.classify(crop, topK)
+            var best = classification.best
+            var topPredictions = classification.topK
 
-            if (structural != null) {
-                recognized += RecognizedSymbol(
-                    prediction = structural,
-                    topK = listOf(structural),
-                    detectorConfidence = box.confidence,
-                    boundingBox = normalizedBox(box, bitmap),
-                    classifierInferenceTimeMs = 0.0,
-                    reliable = box.confidence >= 0.40f && structural.confidence >= 0.80f
+            val equalCandidate = StructuralTokenRecognizer.recognizeEqual(crop)
+            val allowEqualOverride = equalCandidate != null && (
+                best.name == "minus" ||
+                    best.name == "divide" ||
+                    (crop.width.toFloat() / kotlin.math.max(1, crop.height).toFloat() >= 1.35f &&
+                        best.confidence < 0.78f)
                 )
-                continue
+
+            if (allowEqualOverride) {
+                best = equalCandidate!!
+                topPredictions = listOf(best)
             }
 
-            val classification = classifier.classify(crop, topK)
-            val best = classification.best
             val combinedScore = box.confidence * best.confidence
 
             val classifierAccept =
@@ -113,12 +117,12 @@ class FormulaRecognizer(
 
             recognized += RecognizedSymbol(
                 prediction = best,
-                topK = classification.topK,
+                topK = topPredictions,
                 detectorConfidence = box.confidence,
                 boundingBox = normalizedBox(box, bitmap),
                 classifierInferenceTimeMs = classification.inferenceTimeMs,
                 reliable =
-                    classification.reliable &&
+                    (classification.reliable || best.name == "equal") &&
                         box.confidence >= MIN_DETECTOR_CONFIDENCE
             )
         }

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.SystemClock
 import org.json.JSONObject
@@ -19,19 +20,18 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * SymbolSense multi-symbol detector runtime V2.
+ * SymbolSense multi-symbol detector runtime V4 — CROHME2019 Detector V2.
  *
- * Fixes vs V1 Android runtime:
- * 1. Supports FLOAT32 (FP16-weight TFLite) as the preferred detector runtime.
- * 2. Still supports UINT8 detector models for debugging/backward compatibility.
- * 3. Formula-wide camera preprocessing canonicalizes BOTH dark-on-light and
- *    light/colored-on-dark strokes into dark ink on a white background.
- * 4. Adaptive peak threshold prevents the decoder from blindly hitting the
- *    old maxDetections=64 ceiling on real phone/screen images.
- * 5. Runtime guards reject peaks/boxes in letterbox padding and obvious
- *    geometry outliers before NMS.
- *
- * The detector remains class-agnostic. Classification stays in SymbolClassifier.
+ * Main deployment contract:
+ * - Uses CROHME2019 Detector V2 FP16 (FLOAT32 I/O).
+ * - Decoder mirrors Kaggle evaluation: calibrated threshold 0.35, 3x3 local peaks,
+ *   size decode, NMS IoU 0.35, up to 128 detections.
+ * - Keeps formula ROI extraction so a phone screenshot/photo can be cropped to the
+ *   writing region, but DOES NOT binarize/canonicalize the detector input anymore.
+ *   Detector V2 was trained with grayscale camera/screen backgrounds, polarity,
+ *   moire, blur, lighting, JPEG and hard negatives; feeding raw grayscale is the
+ *   closest Android match to that training domain.
+ * - The exact-32 isolated SymbolClassifier remains a separate model.
  */
 data class DetectorBox(
     val leftPx: Float,
@@ -60,7 +60,6 @@ class SymbolDetector(
 ) : Closeable {
 
     companion object {
-        // Generic name: the supplied patch uses the FP16-weight detector.
         private const val MODEL_FILE_NAME = "symbolsense_detector_model.tflite"
         private const val CONFIG_FILE_NAME = "detector_config.json"
 
@@ -70,10 +69,16 @@ class SymbolDetector(
         private const val GRID_W = 96
         private const val STRIDE = 4
 
-        private const val PEAK_SCAN_FLOOR = 0.12f
-        private const val MAX_REASONABLE_BOX_WIDTH_RATIO = 0.78f
-        private const val MAX_REASONABLE_BOX_HEIGHT_RATIO = 0.86f
-        private const val EDGE_GUARD_PX = 3
+        private const val ANALYSIS_MAX_W = 720
+        private const val ANALYSIS_MAX_H = 520
+        private const val MODEL_MARGIN = 18
+
+        private const val PEAK_SCAN_FLOOR = 0.14f // legacy; calibrated decode no longer uses this
+        private const val MIN_INK_PIXELS_IN_BOX = 5
+        private const val MIN_INK_DENSITY = 0.012f
+        private const val MAX_INK_DENSITY = 0.78f
+        private const val MAX_REASONABLE_BOX_WIDTH_RATIO = 0.80f
+        private const val MAX_REASONABLE_BOX_HEIGHT_RATIO = 0.80f
     }
 
     private data class DetectorConfig(
@@ -85,13 +90,25 @@ class SymbolDetector(
         val minConfidenceUInt8: Float
     )
 
+    private data class FormulaRoi(
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int
+    ) {
+        val width: Int get() = right - left + 1
+        val height: Int get() = bottom - top + 1
+    }
+
     private data class PreparedInput(
         val buffer: ByteBuffer,
+        val inkMask: ByteArray,
         val scale: Float,
         val padX: Float,
         val padY: Float,
         val resizedWidth: Int,
         val resizedHeight: Int,
+        val roi: FormulaRoi,
         val originalWidth: Int,
         val originalHeight: Int
     )
@@ -116,13 +133,23 @@ class SymbolDetector(
         val threshold: Float
     )
 
+    private data class Component(
+        val area: Int,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+        val touchesBorder: Boolean
+    ) {
+        val width: Int get() = right - left + 1
+        val height: Int get() = bottom - top + 1
+    }
+
     private val config = loadConfig()
 
     private val interpreter = Interpreter(
         loadModel(),
-        Interpreter.Options().apply {
-            setNumThreads(4)
-        }
+        Interpreter.Options().apply { setNumThreads(4) }
     )
 
     private val inputTensor = interpreter.getInputTensor(0)
@@ -135,70 +162,40 @@ class SymbolDetector(
 
     init {
         require(inputTensor.shape().contentEquals(intArrayOf(1, INPUT_H, INPUT_W, 1))) {
-            "Detector input mismatch. Expected [1,$INPUT_H,$INPUT_W,1], " +
-                "actual=${inputTensor.shape().contentToString()}"
+            "Detector input mismatch: ${inputTensor.shape().contentToString()}"
         }
-
         require(inputType == DataType.FLOAT32 || inputType == DataType.UINT8) {
             "Detector input must be FLOAT32 or UINT8, actual=$inputType"
         }
 
-        if (inputType == DataType.UINT8) {
-            require(inputQuant.scale > 0f) {
-                "Detector UINT8 input quantization invalid."
-            }
-        }
+        var heat = -1
+        var size = -1
 
-        var heatIndex = -1
-        var sizeIndex = -1
-
-        for (index in 0 until interpreter.outputTensorCount) {
-            val tensor = interpreter.getOutputTensor(index)
+        for (i in 0 until interpreter.outputTensorCount) {
+            val tensor = interpreter.getOutputTensor(i)
             val shape = tensor.shape()
-
-            require(
-                tensor.dataType() == DataType.FLOAT32 ||
-                    tensor.dataType() == DataType.UINT8
-            ) {
-                "Detector output $index must be FLOAT32/UINT8, actual=${tensor.dataType()}"
-            }
-
-            require(
-                shape.size == 4 &&
-                    shape[0] == 1 &&
-                    shape[1] == GRID_H &&
-                    shape[2] == GRID_W
-            ) {
+            require(shape.size == 4 && shape[0] == 1 && shape[1] == GRID_H && shape[2] == GRID_W) {
                 "Unknown detector output shape: ${shape.contentToString()}"
             }
-
             when (shape[3]) {
-                1 -> heatIndex = index
-                2 -> sizeIndex = index
+                1 -> heat = i
+                2 -> size = i
             }
         }
 
-        require(heatIndex >= 0) {
-            "Heatmap output [1,$GRID_H,$GRID_W,1] not found."
-        }
-        require(sizeIndex >= 0) {
-            "Size output [1,$GRID_H,$GRID_W,2] not found."
-        }
-
-        heatmapOutputIndex = heatIndex
-        sizeOutputIndex = sizeIndex
+        require(heat >= 0 && size >= 0) { "Detector heatmap/size head not found." }
+        heatmapOutputIndex = heat
+        sizeOutputIndex = size
         heatmapOutputType = interpreter.getOutputTensor(heatmapOutputIndex).dataType()
     }
 
     @Synchronized
     fun detect(bitmap: Bitmap): SymbolDetectionResult {
-        require(bitmap.width > 0 && bitmap.height > 0) {
-            "Bitmap detector is empty."
-        }
+        require(bitmap.width > 0 && bitmap.height > 0)
 
         val prepared = prepareInput(bitmap)
-
         val outputs = mutableMapOf<Int, Any>()
+
         for (index in 0 until interpreter.outputTensorCount) {
             val tensor = interpreter.getOutputTensor(index)
             outputs[index] = ByteBuffer
@@ -207,10 +204,7 @@ class SymbolDetector(
         }
 
         val startNs = SystemClock.elapsedRealtimeNanos()
-        interpreter.runForMultipleInputsOutputs(
-            arrayOf(prepared.buffer),
-            outputs
-        )
+        interpreter.runForMultipleInputsOutputs(arrayOf(prepared.buffer), outputs)
         val endNs = SystemClock.elapsedRealtimeNanos()
 
         val heat = readOutputFloat(
@@ -223,7 +217,6 @@ class SymbolDetector(
         )
 
         val decoded = decode(heat, size, prepared)
-
         val mapped = decoded.boxes
             .mapNotNull { mapBackToOriginal(it, prepared) }
             .filter { it.width >= 2f && it.height >= 2f }
@@ -237,11 +230,10 @@ class SymbolDetector(
     }
 
     /**
-     * Formula-wide preprocessing that preserves geometry.
-     *
-     * Instead of assuming black strokes on a white page, it estimates a local
-     * background and converts absolute local contrast into dark ink on white.
-     * This handles examples such as yellow/white symbols on a green screen.
+     * 1) Find formula ROI on a medium-size image.
+     * 2) Crop original bitmap to that ROI.
+     * 3) Canonicalize ROI to black ink / white background.
+     * 4) Letterbox canonical ROI to 384x256.
      */
     private fun prepareInput(source: Bitmap): PreparedInput {
         val software = if (source.config == Bitmap.Config.ARGB_8888) {
@@ -250,142 +242,56 @@ class SymbolDetector(
             source.copy(Bitmap.Config.ARGB_8888, false)
         }
 
-        val originalW = software.width
-        val originalH = software.height
-
-        val scale = min(
-            INPUT_W.toFloat() / originalW.toFloat(),
-            INPUT_H.toFloat() / originalH.toFloat()
+        val roi = estimateFormulaRoi(software)
+        val roiBitmap = Bitmap.createBitmap(
+            software,
+            roi.left,
+            roi.top,
+            roi.width,
+            roi.height
         )
 
-        val resizedW = max(1, (originalW * scale).roundToInt())
-        val resizedH = max(1, (originalH * scale).roundToInt())
+        val targetW = INPUT_W - 2 * MODEL_MARGIN
+        val targetH = INPUT_H - 2 * MODEL_MARGIN
+        val scale = min(
+            targetW.toFloat() / roi.width.toFloat(),
+            targetH.toFloat() / roi.height.toFloat()
+        )
+
+        val resizedW = max(1, (roi.width * scale).roundToInt())
+        val resizedH = max(1, (roi.height * scale).roundToInt())
         val padX = (INPUT_W - resizedW) * 0.5f
         val padY = (INPUT_H - resizedH) * 0.5f
 
-        val letterbox = Bitmap.createBitmap(
-            INPUT_W,
-            INPUT_H,
-            Bitmap.Config.ARGB_8888
-        )
+        val resized = Bitmap.createScaledBitmap(roiBitmap, resizedW, resizedH, true)
+        val resizedPixels = IntArray(resizedW * resizedH)
+        resized.getPixels(resizedPixels, 0, resizedW, 0, 0, resizedW, resizedH)
 
-        val canvas = Canvas(letterbox)
-        canvas.drawColor(Color.WHITE)
+        // Match CROHME V2 training more closely: raw grayscale camera/screen input.
+        // Padding uses the ROI border median instead of pure white so letterbox bands
+        // do not become artificial high-contrast structures.
+        val bgR = borderMedianChannel(resizedPixels, resizedW, resizedH, 0)
+        val bgG = borderMedianChannel(resizedPixels, resizedW, resizedH, 1)
+        val bgB = borderMedianChannel(resizedPixels, resizedW, resizedH, 2)
+        val bgGray = (299 * bgR + 587 * bgG + 114 * bgB) / 1000
 
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            isFilterBitmap = true
-        }
+        val canvasGray = IntArray(INPUT_W * INPUT_H) { bgGray }
+        val inkMask = ByteArray(INPUT_W * INPUT_H) // retained only for data-class compatibility
 
-        canvas.drawBitmap(
-            software,
-            null,
-            RectF(
-                padX,
-                padY,
-                padX + resizedW,
-                padY + resizedH
-            ),
-            paint
-        )
+        val x0 = padX.roundToInt()
+        val y0 = padY.roundToInt()
 
-        val pixels = IntArray(INPUT_W * INPUT_H)
-        letterbox.getPixels(
-            pixels,
-            0,
-            INPUT_W,
-            0,
-            0,
-            INPUT_W,
-            INPUT_H
-        )
-
-        val validLeft = padX.roundToInt().coerceIn(0, INPUT_W - 1)
-        val validTop = padY.roundToInt().coerceIn(0, INPUT_H - 1)
-        val validRight = (validLeft + resizedW - 1).coerceIn(0, INPUT_W - 1)
-        val validBottom = (validTop + resizedH - 1).coerceIn(0, INPUT_H - 1)
-
-        val gray = IntArray(INPUT_W * INPUT_H)
-        for (i in pixels.indices) {
-            gray[i] = luminance(pixels[i])
-        }
-
-        // Prevent the white letterbox pad from creating a false contrast edge.
-        val borderMedian = validBorderMedian(
-            gray,
-            validLeft,
-            validTop,
-            validRight,
-            validBottom
-        )
-
-        for (y in 0 until INPUT_H) {
-            for (x in 0 until INPUT_W) {
-                if (
-                    x < validLeft || x > validRight ||
-                    y < validTop || y > validBottom
-                ) {
-                    gray[y * INPUT_W + x] = borderMedian
-                }
-            }
-        }
-
-        val smooth = boxBlur(gray, INPUT_W, INPUT_H, radius = 1)
-        val background = boxBlur(smooth, INPUT_W, INPUT_H, radius = 15)
-        val contrast = IntArray(INPUT_W * INPUT_H)
-
-        val histogram = IntArray(256)
-        var validCount = 0
-
-        for (y in validTop..validBottom) {
-            for (x in validLeft..validRight) {
-                val idx = y * INPUT_W + x
-                val c = abs(smooth[idx] - background[idx]).coerceIn(0, 255)
-                contrast[idx] = c
-
-                if (
-                    x >= validLeft + EDGE_GUARD_PX &&
-                    x <= validRight - EDGE_GUARD_PX &&
-                    y >= validTop + EDGE_GUARD_PX &&
-                    y <= validBottom - EDGE_GUARD_PX
-                ) {
-                    histogram[c]++
-                    validCount++
-                }
-            }
-        }
-
-        val p75 = percentileFromHistogram(histogram, validCount, 0.75f)
-        val p98 = percentileFromHistogram(histogram, validCount, 0.98f)
-
-        val low = max(8, p75)
-        val high = max(low + 20, p98)
-        val denom = max(1, high - low).toFloat()
-
-        val canonical = IntArray(INPUT_W * INPUT_H) { 255 }
-
-        for (y in validTop..validBottom) {
-            for (x in validLeft..validRight) {
-                val idx = y * INPUT_W + x
-
-                if (
-                    x < validLeft + EDGE_GUARD_PX ||
-                    x > validRight - EDGE_GUARD_PX ||
-                    y < validTop + EDGE_GUARD_PX ||
-                    y > validBottom - EDGE_GUARD_PX
-                ) {
-                    canonical[idx] = 255
-                    continue
-                }
-
-                val strength = ((contrast[idx] - low) / denom)
-                    .coerceIn(0f, 1f)
-
-                // A slight non-linear boost suppresses weak screen texture while
-                // keeping high-contrast handwriting dark.
-                val boosted = strength * strength * (3f - 2f * strength)
-                canonical[idx] = (255f * (1f - boosted))
-                    .roundToInt()
-                    .coerceIn(0, 255)
+        for (y in 0 until resizedH) {
+            for (x in 0 until resizedW) {
+                val src = y * resizedW + x
+                val c = resizedPixels[src]
+                val gray = (
+                    299 * Color.red(c) +
+                    587 * Color.green(c) +
+                    114 * Color.blue(c)
+                ) / 1000
+                val dst = (y0 + y) * INPUT_W + (x0 + x)
+                canvasGray[dst] = gray
             }
         }
 
@@ -394,35 +300,288 @@ class SymbolDetector(
             .allocateDirect(INPUT_H * INPUT_W * bytesPerElement)
             .order(ByteOrder.nativeOrder())
 
-        for (value in canonical) {
+        for (value in canvasGray) {
             val real = value / 255f
-
             when (inputType) {
                 DataType.FLOAT32 -> buffer.putFloat(real)
-
                 DataType.UINT8 -> {
-                    val q = (
-                        real / inputQuant.scale + inputQuant.zeroPoint
-                        ).roundToInt().coerceIn(0, 255)
+                    require(inputQuant.scale > 0f)
+                    val q = (real / inputQuant.scale + inputQuant.zeroPoint)
+                        .roundToInt()
+                        .coerceIn(0, 255)
                     buffer.put(q.toByte())
                 }
-
                 else -> error("Unsupported detector input type: $inputType")
             }
         }
-
         buffer.rewind()
 
         return PreparedInput(
             buffer = buffer,
+            inkMask = inkMask,
             scale = scale,
             padX = padX,
             padY = padY,
             resizedWidth = resizedW,
             resizedHeight = resizedH,
-            originalWidth = originalW,
-            originalHeight = originalH
+            roi = roi,
+            originalWidth = software.width,
+            originalHeight = software.height
         )
+    }
+
+    /**
+     * Formula ROI estimator. It intentionally uses global border color distance
+     * first because screen moire has high LOCAL contrast but usually much lower
+     * distance from the background color than the actual ink.
+     */
+    private fun estimateFormulaRoi(source: Bitmap): FormulaRoi {
+        val scale = min(
+            1f,
+            min(
+                ANALYSIS_MAX_W.toFloat() / source.width.toFloat(),
+                ANALYSIS_MAX_H.toFloat() / source.height.toFloat()
+            )
+        )
+
+        val aw = max(1, (source.width * scale).roundToInt())
+        val ah = max(1, (source.height * scale).roundToInt())
+        val small = if (aw == source.width && ah == source.height) {
+            source
+        } else {
+            Bitmap.createScaledBitmap(source, aw, ah, true)
+        }
+
+        val pixels = IntArray(aw * ah)
+        small.getPixels(pixels, 0, aw, 0, 0, aw, ah)
+
+        val bgR = borderMedianChannel(pixels, aw, ah, 0)
+        val bgG = borderMedianChannel(pixels, aw, ah, 1)
+        val bgB = borderMedianChannel(pixels, aw, ah, 2)
+        val bgGray = ((299 * bgR + 587 * bgG + 114 * bgB) / 1000)
+
+        val score = IntArray(pixels.size)
+        val histogram = IntArray(256)
+
+        for (i in pixels.indices) {
+            val c = pixels[i]
+            val r = Color.red(c)
+            val g = Color.green(c)
+            val b = Color.blue(c)
+            val gray = (299 * r + 587 * g + 114 * b) / 1000
+
+            val dr = abs(r - bgR)
+            val dg = abs(g - bgG)
+            val db = abs(b - bgB)
+            val colorDistance = min(255, (dr + dg + db) * 2 / 3)
+            val grayDistance = min(255, abs(gray - bgGray) * 2)
+            val s = max(colorDistance, grayDistance)
+
+            score[i] = s
+            histogram[s]++
+        }
+
+        val otsu = otsuThreshold(histogram, score.size)
+        val threshold = max(24, otsu)
+        val mask = ByteArray(score.size)
+
+        for (i in score.indices) {
+            if (score[i] >= threshold) mask[i] = 1
+        }
+
+        // Zero a small analysis border. Formula crops from CameraX/Gallery are
+        // expected to have some context; screen/card borders should not define ROI.
+        val border = max(2, (min(aw, ah) * 0.012f).roundToInt())
+        for (y in 0 until ah) {
+            for (x in 0 until aw) {
+                if (x < border || x >= aw - border || y < border || y >= ah - border) {
+                    mask[y * aw + x] = 0
+                }
+            }
+        }
+
+        val components = connectedComponents(mask, aw, ah)
+        if (components.isEmpty()) return fullRoi(source)
+
+        val largest = components.maxOf { it.area }
+        val minArea = max(5, (largest * 0.004f).roundToInt())
+
+        val kept = components.filter { c ->
+            c.area >= minArea &&
+                !c.touchesBorder &&
+                !(c.height > ah * 0.72f && c.width < aw * 0.035f) &&
+                !(c.width > aw * 0.72f && c.height < ah * 0.035f)
+        }
+
+        if (kept.isEmpty()) return fullRoi(source)
+
+        // Keep components near the dominant horizontal writing band. This is V3
+        // for long/linear formulas + superscripts, not full multi-line math yet.
+        val weightedCenterY = kept.sumOf { it.area.toLong() * ((it.top + it.bottom) / 2L) }
+            .toDouble() / max(1L, kept.sumOf { it.area.toLong() }).toDouble()
+
+        val bandTolerance = max(ah * 0.30f, 24f)
+        val band = kept.filter { c ->
+            abs(((c.top + c.bottom) * 0.5f) - weightedCenterY.toFloat()) <= bandTolerance
+        }
+
+        val finalComponents = if (band.size >= 2) band else kept
+
+        var left = finalComponents.minOf { it.left }
+        var top = finalComponents.minOf { it.top }
+        var right = finalComponents.maxOf { it.right }
+        var bottom = finalComponents.maxOf { it.bottom }
+
+        val bw = right - left + 1
+        val bh = bottom - top + 1
+        val padX = max(5, (bw * 0.08f).roundToInt())
+        val padY = max(5, (bh * 0.18f).roundToInt())
+
+        left = max(0, left - padX)
+        right = min(aw - 1, right + padX)
+        top = max(0, top - padY)
+        bottom = min(ah - 1, bottom + padY)
+
+        // Avoid pathological ROI collapse.
+        if ((right - left + 1) < aw * 0.18f || (bottom - top + 1) < ah * 0.08f) {
+            return fullRoi(source)
+        }
+
+        val inv = 1f / scale
+        val originalLeft = (left * inv).roundToInt().coerceIn(0, source.width - 1)
+        val originalTop = (top * inv).roundToInt().coerceIn(0, source.height - 1)
+        val originalRight = (right * inv).roundToInt().coerceIn(originalLeft, source.width - 1)
+        val originalBottom = (bottom * inv).roundToInt().coerceIn(originalTop, source.height - 1)
+
+        return FormulaRoi(originalLeft, originalTop, originalRight, originalBottom)
+    }
+
+    /**
+     * Canonical ROI: near-binary dark ink on a white background.
+     * This deliberately suppresses screen texture before the detector.
+     */
+    private fun canonicalizeRoi(bitmap: Bitmap): Pair<IntArray, ByteArray> {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+
+        val bgR = borderMedianChannel(pixels, w, h, 0)
+        val bgG = borderMedianChannel(pixels, w, h, 1)
+        val bgB = borderMedianChannel(pixels, w, h, 2)
+        val bgGray = (299 * bgR + 587 * bgG + 114 * bgB) / 1000
+
+        val gray = IntArray(pixels.size)
+        for (i in pixels.indices) {
+            val c = pixels[i]
+            gray[i] = (299 * Color.red(c) + 587 * Color.green(c) + 114 * Color.blue(c)) / 1000
+        }
+
+        val localBackground = boxBlur(gray, w, h, radius = max(3, min(w, h) / 24))
+        val score = IntArray(pixels.size)
+        val hist = IntArray(256)
+
+        for (i in pixels.indices) {
+            val c = pixels[i]
+            val r = Color.red(c)
+            val g = Color.green(c)
+            val b = Color.blue(c)
+
+            val colorDistance = min(
+                255,
+                (abs(r - bgR) + abs(g - bgG) + abs(b - bgB)) * 2 / 3
+            )
+            val globalGray = min(255, abs(gray[i] - bgGray) * 2)
+            val localGray = min(255, abs(gray[i] - localBackground[i]) * 2)
+
+            // Global color/background difference dominates. Local contrast only
+            // assists when illumination is uneven; it is intentionally downweighted.
+            val s = max(max(colorDistance, globalGray), (localGray * 0.62f).roundToInt())
+            score[i] = s
+            hist[s]++
+        }
+
+        val otsu = otsuThreshold(hist, score.size)
+        val p92 = percentileFromHistogram(hist, score.size, 0.92f)
+        val threshold = max(26, max(otsu, (p92 * 0.58f).roundToInt()))
+
+        val rawMask = ByteArray(score.size)
+        for (i in score.indices) {
+            if (score[i] >= threshold) rawMask[i] = 1
+        }
+
+        val cleaned = cleanForegroundMask(rawMask, w, h)
+        val canonical = IntArray(score.size) { 255 }
+
+        for (i in cleaned.indices) {
+            if (cleaned[i].toInt() != 0) {
+                // Slight grayscale edge retention for anti-aliasing, but never
+                // leave the original colored/screen background in detector input.
+                val darkness = (245 - min(205, score[i])).coerceIn(0, 80)
+                canonical[i] = darkness
+            }
+        }
+
+        return canonical to cleaned
+    }
+
+    private fun cleanForegroundMask(mask: ByteArray, w: Int, h: Int): ByteArray {
+        val comps = connectedComponents(mask, w, h)
+        if (comps.isEmpty()) return mask
+
+        val largest = comps.maxOf { it.area }
+        val minArea = max(3, (largest * 0.0025f).roundToInt())
+        val keep = BooleanArray(comps.size)
+
+        comps.forEachIndexed { index, c ->
+            val verticalLine = c.height > h * 0.75f && c.width < w * 0.025f
+            val horizontalLine = c.width > w * 0.85f && c.height < h * 0.02f
+            keep[index] = c.area >= minArea && !verticalLine && !horizontalLine
+        }
+
+        // Re-label once to reconstruct only kept components.
+        val out = ByteArray(mask.size)
+        val visited = BooleanArray(mask.size)
+        val queue = IntArray(mask.size)
+        var componentIndex = 0
+
+        for (start in mask.indices) {
+            if (mask[start].toInt() == 0 || visited[start]) continue
+
+            var head = 0
+            var tail = 0
+            queue[tail++] = start
+            visited[start] = true
+            val members = IntArrayList()
+
+            while (head < tail) {
+                val idx = queue[head++]
+                members.add(idx)
+                val x = idx % w
+                val y = idx / w
+
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (dx == 0 && dy == 0) continue
+                        val nx = x + dx
+                        val ny = y + dy
+                        if (nx !in 0 until w || ny !in 0 until h) continue
+                        val ni = ny * w + nx
+                        if (!visited[ni] && mask[ni].toInt() != 0) {
+                            visited[ni] = true
+                            queue[tail++] = ni
+                        }
+                    }
+                }
+            }
+
+            if (componentIndex < keep.size && keep[componentIndex]) {
+                for (i in 0 until members.size) out[members[i]] = 1
+            }
+            componentIndex++
+        }
+
+        return out
     }
 
     private fun decode(
@@ -430,17 +589,18 @@ class SymbolDetector(
         size: FloatArray,
         prepared: PreparedInput
     ): DecodeResult {
+        val threshold = effectiveBaseThreshold()
         val peaks = ArrayList<Peak>()
 
+        // Mirrors notebook decode(): threshold first, then 3x3 local maximum.
         for (gy in 0 until GRID_H) {
             for (gx in 0 until GRID_W) {
                 val score = heat[heatIndex(gy, gx)]
-                if (score < PEAK_SCAN_FLOOR) continue
+                if (score < threshold) continue
                 if (!isLocalPeak(heat, gy, gx, score)) continue
 
                 val cx = (gx + 0.5f) * STRIDE
                 val cy = (gy + 0.5f) * STRIDE
-
                 if (!centerInsideValidImage(cx, cy, prepared)) continue
 
                 peaks += Peak(gy, gx, score)
@@ -448,67 +608,31 @@ class SymbolDetector(
         }
 
         if (peaks.isEmpty()) {
-            return DecodeResult(
-                boxes = emptyList(),
-                rawPeakCount = 0,
-                threshold = effectiveBaseThreshold()
-            )
-        }
-
-        val sortedPeaks = peaks.sortedByDescending { it.score }
-        val topScore = sortedPeaks.first().score
-
-        // Keras FP16 stays close to training; UINT8 needs a higher safety floor.
-        var threshold = max(
-            effectiveBaseThreshold(),
-            topScore * 0.36f
-        )
-
-        var selected = sortedPeaks.filter { it.score >= threshold }
-
-        // Hard guard against the exact failure mode seen on device: the old
-        // decoder returned 64 background peaks. Raise threshold adaptively so
-        // only the strongest plausible peaks survive.
-        if (selected.size > config.maxRawPeaks) {
-            val rankScore = selected[config.maxRawPeaks - 1].score
-            threshold = max(threshold, rankScore)
-            selected = selected.filter { it.score + 1e-7f >= threshold }
-                .take(config.maxRawPeaks)
+            return DecodeResult(emptyList(), 0, threshold)
         }
 
         val candidates = ArrayList<RawBox>()
 
-        for (peak in selected) {
-            val sizeBase = sizeIndex(peak.gy, peak.gx, 0)
-            val boxW = size[sizeBase] * INPUT_W
-            val boxH = size[sizeBase + 1] * INPUT_H
+        for (peak in peaks.sortedByDescending { it.score }) {
+            val base = sizeIndex(peak.gy, peak.gx, 0)
+            val boxW = size[base] * INPUT_W
+            val boxH = size[base + 1] * INPUT_H
 
-            if (boxW < 3f || boxH < 3f) continue
+            if (!boxW.isFinite() || !boxH.isFinite()) continue
+            if (boxW < 2f || boxH < 2f) continue
             if (boxW > INPUT_W * MAX_REASONABLE_BOX_WIDTH_RATIO) continue
             if (boxH > INPUT_H * MAX_REASONABLE_BOX_HEIGHT_RATIO) continue
 
-            val centerX = (peak.gx + 0.5f) * STRIDE
-            val centerY = (peak.gy + 0.5f) * STRIDE
+            val cx = (peak.gx + 0.5f) * STRIDE
+            val cy = (peak.gy + 0.5f) * STRIDE
 
-            val validLeft = prepared.padX
-            val validTop = prepared.padY
-            val validRight = prepared.padX + prepared.resizedWidth
-            val validBottom = prepared.padY + prepared.resizedHeight
+            val left = (cx - boxW * 0.5f).coerceIn(0f, INPUT_W - 1f)
+            val top = (cy - boxH * 0.5f).coerceIn(0f, INPUT_H - 1f)
+            val right = (cx + boxW * 0.5f).coerceIn(0f, INPUT_W - 1f)
+            val bottom = (cy + boxH * 0.5f).coerceIn(0f, INPUT_H - 1f)
 
-            val left = (centerX - boxW * 0.5f).coerceIn(validLeft, validRight)
-            val top = (centerY - boxH * 0.5f).coerceIn(validTop, validBottom)
-            val right = (centerX + boxW * 0.5f).coerceIn(validLeft, validRight)
-            val bottom = (centerY + boxH * 0.5f).coerceIn(validTop, validBottom)
-
-            if (right - left < 3f || bottom - top < 3f) continue
-
-            candidates += RawBox(
-                left = left,
-                top = top,
-                right = right,
-                bottom = bottom,
-                score = peak.score
-            )
+            if (right <= left || bottom <= top) continue
+            candidates += RawBox(left, top, right, bottom, peak.score)
         }
 
         return DecodeResult(
@@ -518,40 +642,94 @@ class SymbolDetector(
         )
     }
 
+    private fun foregroundSupported(
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+        mask: ByteArray
+    ): Boolean {
+        val x1 = left.roundToInt().coerceIn(0, INPUT_W - 1)
+        val y1 = top.roundToInt().coerceIn(0, INPUT_H - 1)
+        val x2 = right.roundToInt().coerceIn(x1, INPUT_W - 1)
+        val y2 = bottom.roundToInt().coerceIn(y1, INPUT_H - 1)
+
+        var ink = 0
+        var total = 0
+
+        for (y in y1..y2) {
+            for (x in x1..x2) {
+                total++
+                if (mask[y * INPUT_W + x].toInt() != 0) ink++
+            }
+        }
+
+        if (ink < MIN_INK_PIXELS_IN_BOX || total <= 0) return false
+        val density = ink.toFloat() / total.toFloat()
+        return density in MIN_INK_DENSITY..MAX_INK_DENSITY
+    }
+
     private fun effectiveBaseThreshold(): Float {
         val runtimeFloor = if (heatmapOutputType == DataType.UINT8) {
             config.minConfidenceUInt8
         } else {
             config.minConfidenceFloat
         }
-
         return max(config.confidenceThreshold, runtimeFloor)
     }
 
-    private fun centerInsideValidImage(
-        centerX: Float,
-        centerY: Float,
-        prepared: PreparedInput
-    ): Boolean {
-        return centerX >= prepared.padX &&
-            centerX <= prepared.padX + prepared.resizedWidth &&
-            centerY >= prepared.padY &&
-            centerY <= prepared.padY + prepared.resizedHeight
+    private fun centerInsideValidImage(cx: Float, cy: Float, p: PreparedInput): Boolean {
+        return cx >= p.padX && cx <= p.padX + p.resizedWidth &&
+            cy >= p.padY && cy <= p.padY + p.resizedHeight
     }
 
-    private fun isLocalPeak(
-        heat: FloatArray,
-        gy: Int,
-        gx: Int,
-        score: Float
-    ): Boolean {
-        val y1 = max(0, gy - 1)
-        val y2 = min(GRID_H - 1, gy + 1)
-        val x1 = max(0, gx - 1)
-        val x2 = min(GRID_W - 1, gx + 1)
+    private fun mapBackToOriginal(box: RawBox, p: PreparedInput): DetectorBox? {
+        val localLeft = ((box.left - p.padX) / p.scale).coerceIn(0f, p.roi.width - 1f)
+        val localTop = ((box.top - p.padY) / p.scale).coerceIn(0f, p.roi.height - 1f)
+        val localRight = ((box.right - p.padX) / p.scale).coerceIn(0f, p.roi.width - 1f)
+        val localBottom = ((box.bottom - p.padY) / p.scale).coerceIn(0f, p.roi.height - 1f)
 
-        for (y in y1..y2) {
-            for (x in x1..x2) {
+        val left = (p.roi.left + localLeft).coerceIn(0f, p.originalWidth - 1f)
+        val top = (p.roi.top + localTop).coerceIn(0f, p.originalHeight - 1f)
+        val right = (p.roi.left + localRight).coerceIn(0f, p.originalWidth - 1f)
+        val bottom = (p.roi.top + localBottom).coerceIn(0f, p.originalHeight - 1f)
+
+        if (right - left < 2f || bottom - top < 2f) return null
+        return DetectorBox(left, top, right, bottom, box.score)
+    }
+
+    private fun nonMaximumSuppression(candidates: List<RawBox>): List<RawBox> {
+        if (candidates.isEmpty()) return emptyList()
+        val sorted = candidates.sortedByDescending { it.score }.toMutableList()
+        val kept = ArrayList<RawBox>()
+
+        while (sorted.isNotEmpty() && kept.size < config.maxDetections) {
+            val current = sorted.removeAt(0)
+            kept += current
+            val it = sorted.iterator()
+            while (it.hasNext()) {
+                if (iou(current, it.next()) >= config.nmsIouThreshold) it.remove()
+            }
+        }
+        return kept
+    }
+
+    private fun iou(a: RawBox, b: RawBox): Float {
+        val l = max(a.left, b.left)
+        val t = max(a.top, b.top)
+        val r = min(a.right, b.right)
+        val bt = min(a.bottom, b.bottom)
+        val iw = max(0f, r - l)
+        val ih = max(0f, bt - t)
+        val inter = iw * ih
+        val aa = max(0f, a.right - a.left) * max(0f, a.bottom - a.top)
+        val ba = max(0f, b.right - b.left) * max(0f, b.bottom - b.top)
+        return inter / max(aa + ba - inter, 1e-6f)
+    }
+
+    private fun isLocalPeak(heat: FloatArray, gy: Int, gx: Int, score: Float): Boolean {
+        for (y in max(0, gy - 1)..min(GRID_H - 1, gy + 1)) {
+            for (x in max(0, gx - 1)..min(GRID_W - 1, gx + 1)) {
                 if (y == gy && x == gx) continue
                 if (heat[heatIndex(y, x)] > score) return false
             }
@@ -559,258 +737,273 @@ class SymbolDetector(
         return true
     }
 
-    private fun nonMaximumSuppression(candidates: List<RawBox>): List<RawBox> {
-        if (candidates.isEmpty()) return emptyList()
+    private fun heatIndex(gy: Int, gx: Int): Int = (gy * GRID_W + gx)
+    private fun sizeIndex(gy: Int, gx: Int, channel: Int): Int = (gy * GRID_W + gx) * 2 + channel
 
-        val sorted = candidates.sortedByDescending { it.score }.toMutableList()
-        val kept = ArrayList<RawBox>()
-
-        while (sorted.isNotEmpty() && kept.size < config.maxDetections) {
-            val current = sorted.removeAt(0)
-            kept += current
-
-            val iterator = sorted.iterator()
-            while (iterator.hasNext()) {
-                val other = iterator.next()
-                if (iou(current, other) >= config.nmsIouThreshold) {
-                    iterator.remove()
-                }
-            }
-        }
-
-        return kept
-    }
-
-    private fun mapBackToOriginal(
-        box: RawBox,
-        prepared: PreparedInput
-    ): DetectorBox? {
-        val left = ((box.left - prepared.padX) / prepared.scale)
-            .coerceIn(0f, prepared.originalWidth - 1f)
-        val top = ((box.top - prepared.padY) / prepared.scale)
-            .coerceIn(0f, prepared.originalHeight - 1f)
-        val right = ((box.right - prepared.padX) / prepared.scale)
-            .coerceIn(0f, prepared.originalWidth - 1f)
-        val bottom = ((box.bottom - prepared.padY) / prepared.scale)
-            .coerceIn(0f, prepared.originalHeight - 1f)
-
-        if (right - left < 2f || bottom - top < 2f) return null
-
-        return DetectorBox(
-            leftPx = left,
-            topPx = top,
-            rightPx = right,
-            bottomPx = bottom,
-            confidence = box.score
-        )
-    }
-
-    private fun readOutputFloat(
-        buffer: ByteBuffer,
-        outputIndex: Int
-    ): FloatArray {
+    private fun readOutputFloat(buffer: ByteBuffer, outputIndex: Int): FloatArray {
         val tensor = interpreter.getOutputTensor(outputIndex)
-        val duplicate = buffer.duplicate().order(ByteOrder.nativeOrder())
-        duplicate.rewind()
+        val dup = buffer.duplicate().order(ByteOrder.nativeOrder())
+        dup.rewind()
 
         return when (tensor.dataType()) {
-            DataType.FLOAT32 -> {
-                FloatArray(tensor.numElements()) {
-                    duplicate.float
-                }
-            }
-
+            DataType.FLOAT32 -> FloatArray(tensor.numElements()) { dup.float }
             DataType.UINT8 -> {
-                val quant = tensor.quantizationParams()
-                require(quant.scale > 0f) {
-                    "Output quantization invalid for tensor $outputIndex"
-                }
-
+                val q = tensor.quantizationParams()
+                require(q.scale > 0f)
                 FloatArray(tensor.numElements()) {
-                    val q = duplicate.get().toInt() and 0xFF
-                    (q - quant.zeroPoint) * quant.scale
+                    val raw = dup.get().toInt() and 0xFF
+                    (raw - q.zeroPoint) * q.scale
                 }
             }
+            else -> error("Unsupported detector output type: ${tensor.dataType()}")
+        }
+    }
 
-            else -> error(
-                "Unsupported detector output type: ${tensor.dataType()}"
+    private fun loadConfig(): DetectorConfig {
+        return try {
+            val text = context.assets.open(configFileName).bufferedReader().use { it.readText() }
+            val root = JSONObject(text)
+            val decode = root.optJSONObject("decode")
+
+            // CROHME V2 exports a flat config:
+            // confidence_threshold=0.35, nms_iou=0.35, max_detections=128.
+            // Keep backward compatibility with the earlier nested V3 config.
+            val confidence = when {
+                root.has("confidence_threshold") ->
+                    root.optDouble("confidence_threshold", 0.35).toFloat()
+                decode != null ->
+                    decode.optDouble("confidence_threshold", 0.35).toFloat()
+                else -> 0.35f
+            }
+
+            val nms = when {
+                root.has("nms_iou") ->
+                    root.optDouble("nms_iou", 0.35).toFloat()
+                decode != null ->
+                    decode.optDouble("nms_iou_threshold", 0.35).toFloat()
+                else -> 0.35f
+            }
+
+            val maxDetections = when {
+                root.has("max_detections") -> root.optInt("max_detections", 128)
+                decode != null -> decode.optInt("max_detections", 128)
+                else -> 128
+            }.coerceIn(1, 128)
+
+            val maxRawPeaks = when {
+                decode != null -> decode.optInt("max_raw_peaks", 256)
+                else -> 256
+            }.coerceIn(16, 512)
+
+            val minFloat = when {
+                decode != null -> decode.optDouble("min_confidence_float", confidence.toDouble()).toFloat()
+                else -> confidence
+            }
+
+            val minUInt8 = when {
+                decode != null -> decode.optDouble("min_confidence_uint8", 0.50).toFloat()
+                else -> 0.50f
+            }
+
+            DetectorConfig(
+                confidenceThreshold = confidence,
+                nmsIouThreshold = nms,
+                maxDetections = maxDetections,
+                maxRawPeaks = maxRawPeaks,
+                minConfidenceFloat = minFloat,
+                minConfidenceUInt8 = minUInt8
+            )
+        } catch (_: Exception) {
+            DetectorConfig(
+                confidenceThreshold = 0.35f,
+                nmsIouThreshold = 0.35f,
+                maxDetections = 128,
+                maxRawPeaks = 256,
+                minConfidenceFloat = 0.35f,
+                minConfidenceUInt8 = 0.50f
             )
         }
     }
 
-    private fun heatIndex(y: Int, x: Int): Int = y * GRID_W + x
-
-    private fun sizeIndex(y: Int, x: Int, channel: Int): Int {
-        return (y * GRID_W + x) * 2 + channel
-    }
-
-    private fun iou(a: RawBox, b: RawBox): Float {
-        val left = max(a.left, b.left)
-        val top = max(a.top, b.top)
-        val right = min(a.right, b.right)
-        val bottom = min(a.bottom, b.bottom)
-
-        val interW = max(0f, right - left)
-        val interH = max(0f, bottom - top)
-        val intersection = interW * interH
-
-        val areaA = max(0f, a.right - a.left) * max(0f, a.bottom - a.top)
-        val areaB = max(0f, b.right - b.left) * max(0f, b.bottom - b.top)
-        val union = areaA + areaB - intersection
-
-        return if (union <= 0f) 0f else intersection / union
-    }
-
-    private fun loadConfig(): DetectorConfig {
-        val json = context.assets.open(configFileName)
-            .bufferedReader()
-            .use { it.readText() }
-
-        val root = JSONObject(json)
-        val shape = root.getJSONArray("input_shape")
-
-        require(shape.length() == 4)
-        require(shape.getInt(0) == 1)
-        require(shape.getInt(1) == INPUT_H)
-        require(shape.getInt(2) == INPUT_W)
-        require(shape.getInt(3) == 1)
-        require(root.getInt("stride") == STRIDE)
-
-        val decode = root.getJSONObject("decode")
-
-        return DetectorConfig(
-            confidenceThreshold = decode
-                .optDouble("confidence_threshold", 0.38)
-                .toFloat(),
-            nmsIouThreshold = decode
-                .optDouble("nms_iou_threshold", 0.30)
-                .toFloat(),
-            maxDetections = decode
-                .optInt("max_detections", 32)
-                .coerceIn(1, 48),
-            maxRawPeaks = decode
-                .optInt("runtime_max_raw_peaks", 28)
-                .coerceIn(4, 48),
-            minConfidenceFloat = decode
-                .optDouble("runtime_min_confidence_float", 0.36)
-                .toFloat(),
-            minConfidenceUInt8 = decode
-                .optDouble("runtime_min_confidence_uint8", 0.50)
-                .toFloat()
-        )
-    }
-
     private fun loadModel(): ByteBuffer {
-        val modelBytes = context.assets.open(modelFileName).use { it.readBytes() }
-        return ByteBuffer
-            .allocateDirect(modelBytes.size)
+        val bytes = context.assets.open(modelFileName).use { it.readBytes() }
+        return ByteBuffer.allocateDirect(bytes.size)
             .order(ByteOrder.nativeOrder())
             .apply {
-                put(modelBytes)
+                put(bytes)
                 rewind()
             }
     }
 
-    private fun luminance(color: Int): Int {
-        return (
-            0.299 * Color.red(color) +
-                0.587 * Color.green(color) +
-                0.114 * Color.blue(color)
-            ).roundToInt().coerceIn(0, 255)
-    }
+    private fun borderMedianChannel(pixels: IntArray, w: Int, h: Int, channel: Int): Int {
+        val values = IntArray(2 * w + 2 * h)
+        var k = 0
 
-    private fun validBorderMedian(
-        gray: IntArray,
-        left: Int,
-        top: Int,
-        right: Int,
-        bottom: Int
-    ): Int {
-        val values = ArrayList<Int>()
-        val samples = 96
-
-        for (i in 0 until samples) {
-            val fx = i.toFloat() / (samples - 1).toFloat()
-            val x = (left + (right - left) * fx).roundToInt().coerceIn(left, right)
-            val y = (top + (bottom - top) * fx).roundToInt().coerceIn(top, bottom)
-
-            values += gray[top * INPUT_W + x]
-            values += gray[bottom * INPUT_W + x]
-            values += gray[y * INPUT_W + left]
-            values += gray[y * INPUT_W + right]
+        fun value(c: Int): Int = when (channel) {
+            0 -> Color.red(c)
+            1 -> Color.green(c)
+            else -> Color.blue(c)
         }
 
-        if (values.isEmpty()) return 255
-        values.sort()
-        return values[values.size / 2]
+        for (x in 0 until w) {
+            values[k++] = value(pixels[x])
+            values[k++] = value(pixels[(h - 1) * w + x])
+        }
+        for (y in 0 until h) {
+            values[k++] = value(pixels[y * w])
+            values[k++] = value(pixels[y * w + (w - 1)])
+        }
+
+        val used = values.copyOf(k)
+        used.sort()
+        return used[used.size / 2]
     }
 
-    /** Fast edge-clamped box blur using an integral image. */
-    private fun boxBlur(
-        src: IntArray,
-        width: Int,
-        height: Int,
-        radius: Int
-    ): IntArray {
-        if (radius <= 0) return src.copyOf()
+    private fun otsuThreshold(hist: IntArray, total: Int): Int {
+        if (total <= 0) return 32
+        var sum = 0.0
+        for (i in hist.indices) sum += i.toDouble() * hist[i].toDouble()
 
-        val integralWidth = width + 1
-        val integral = LongArray((width + 1) * (height + 1))
+        var sumB = 0.0
+        var wB = 0
+        var maxVar = -1.0
+        var threshold = 32
 
-        for (y in 0 until height) {
-            var rowSum = 0L
-            for (x in 0 until width) {
-                rowSum += src[y * width + x].toLong()
-                integral[(y + 1) * integralWidth + (x + 1)] =
-                    integral[y * integralWidth + (x + 1)] + rowSum
+        for (t in hist.indices) {
+            wB += hist[t]
+            if (wB == 0) continue
+            val wF = total - wB
+            if (wF <= 0) break
+
+            sumB += t.toDouble() * hist[t].toDouble()
+            val mB = sumB / wB.toDouble()
+            val mF = (sum - sumB) / wF.toDouble()
+            val diff = mB - mF
+            val between = wB.toDouble() * wF.toDouble() * diff * diff
+
+            if (between > maxVar) {
+                maxVar = between
+                threshold = t
+            }
+        }
+        return threshold
+    }
+
+    private fun percentileFromHistogram(hist: IntArray, total: Int, p: Float): Int {
+        if (total <= 0) return 0
+        val target = max(1, (total * p.coerceIn(0f, 1f)).roundToInt())
+        var cumulative = 0
+        for (i in hist.indices) {
+            cumulative += hist[i]
+            if (cumulative >= target) return i
+        }
+        return 255
+    }
+
+    private fun boxBlur(input: IntArray, w: Int, h: Int, radius: Int): IntArray {
+        if (radius <= 0) return input.copyOf()
+        val horizontal = IntArray(input.size)
+        val output = IntArray(input.size)
+
+        for (y in 0 until h) {
+            var sum = 0L
+            for (x in -radius..radius) {
+                val xx = x.coerceIn(0, w - 1)
+                sum += input[y * w + xx]
+            }
+            for (x in 0 until w) {
+                horizontal[y * w + x] = (sum / (2 * radius + 1)).toInt()
+                val removeX = (x - radius).coerceIn(0, w - 1)
+                val addX = (x + radius + 1).coerceIn(0, w - 1)
+                sum += input[y * w + addX] - input[y * w + removeX]
             }
         }
 
-        val out = IntArray(width * height)
-
-        for (y in 0 until height) {
-            val y1 = max(0, y - radius)
-            val y2 = min(height - 1, y + radius)
-
-            for (x in 0 until width) {
-                val x1 = max(0, x - radius)
-                val x2 = min(width - 1, x + radius)
-
-                val a = integral[y1 * integralWidth + x1]
-                val b = integral[y1 * integralWidth + (x2 + 1)]
-                val c = integral[(y2 + 1) * integralWidth + x1]
-                val d = integral[(y2 + 1) * integralWidth + (x2 + 1)]
-
-                val sum = d - b - c + a
-                val count = (x2 - x1 + 1) * (y2 - y1 + 1)
-                out[y * width + x] = (sum / count).toInt().coerceIn(0, 255)
+        for (x in 0 until w) {
+            var sum = 0L
+            for (y in -radius..radius) {
+                val yy = y.coerceIn(0, h - 1)
+                sum += horizontal[yy * w + x]
             }
+            for (y in 0 until h) {
+                output[y * w + x] = (sum / (2 * radius + 1)).toInt()
+                val removeY = (y - radius).coerceIn(0, h - 1)
+                val addY = (y + radius + 1).coerceIn(0, h - 1)
+                sum += horizontal[addY * w + x] - horizontal[removeY * w + x]
+            }
+        }
+        return output
+    }
+
+    private fun connectedComponents(mask: ByteArray, w: Int, h: Int): List<Component> {
+        val visited = BooleanArray(mask.size)
+        val queue = IntArray(mask.size)
+        val out = ArrayList<Component>()
+
+        for (start in mask.indices) {
+            if (mask[start].toInt() == 0 || visited[start]) continue
+
+            var head = 0
+            var tail = 0
+            queue[tail++] = start
+            visited[start] = true
+
+            var area = 0
+            var left = w
+            var top = h
+            var right = -1
+            var bottom = -1
+            var touches = false
+
+            while (head < tail) {
+                val idx = queue[head++]
+                val x = idx % w
+                val y = idx / w
+                area++
+                left = min(left, x)
+                right = max(right, x)
+                top = min(top, y)
+                bottom = max(bottom, y)
+                if (x == 0 || y == 0 || x == w - 1 || y == h - 1) touches = true
+
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (dx == 0 && dy == 0) continue
+                        val nx = x + dx
+                        val ny = y + dy
+                        if (nx !in 0 until w || ny !in 0 until h) continue
+                        val ni = ny * w + nx
+                        if (!visited[ni] && mask[ni].toInt() != 0) {
+                            visited[ni] = true
+                            queue[tail++] = ni
+                        }
+                    }
+                }
+            }
+
+            out += Component(area, left, top, right, bottom, touches)
         }
 
         return out
     }
 
-    private fun percentileFromHistogram(
-        histogram: IntArray,
-        count: Int,
-        percentile: Float
-    ): Int {
-        if (count <= 0) return 0
-
-        val target = (count * percentile.coerceIn(0f, 1f))
-            .roundToInt()
-            .coerceAtLeast(1)
-
-        var cumulative = 0
-        for (value in histogram.indices) {
-            cumulative += histogram[value]
-            if (cumulative >= target) return value
-        }
-
-        return 255
-    }
+    private fun fullRoi(source: Bitmap): FormulaRoi =
+        FormulaRoi(0, 0, source.width - 1, source.height - 1)
 
     override fun close() {
         interpreter.close()
+    }
+
+    private class IntArrayList(initialCapacity: Int = 64) {
+        private var data = IntArray(initialCapacity)
+        var size: Int = 0
+            private set
+
+        fun add(value: Int) {
+            if (size >= data.size) data = data.copyOf(max(8, data.size * 2))
+            data[size++] = value
+        }
+
+        operator fun get(index: Int): Int = data[index]
     }
 }
