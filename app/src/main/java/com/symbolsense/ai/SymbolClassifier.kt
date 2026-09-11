@@ -272,6 +272,35 @@ class SymbolClassifier(
         )
     }
 
+
+    /**
+     * DEBUG ONLY.
+     *
+     * Returns the exact 64x64 canonical grayscale image produced by the same
+     * V4 preprocessing path used immediately before TFLite inference.
+     *
+     * This lets the result screen show:
+     * detector crop -> classifier canonical input -> classifier top-K.
+     */
+    fun preprocessForDebug(
+        bitmap: Bitmap
+    ): Bitmap {
+        val pixels = preprocessCameraRobust(bitmap)
+
+        val outPixels = IntArray(INPUT_SIZE * INPUT_SIZE)
+        for (i in pixels.indices) {
+            val v = pixels[i].toInt() and 0xFF
+            outPixels[i] = Color.rgb(v, v, v)
+        }
+
+        return Bitmap.createBitmap(
+            outPixels,
+            INPUT_SIZE,
+            INPUT_SIZE,
+            Bitmap.Config.ARGB_8888
+        )
+    }
+
     /**
      * SymbolSense V4 camera-robust preprocessing.
      *

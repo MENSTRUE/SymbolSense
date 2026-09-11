@@ -43,6 +43,10 @@ class FormulaRecognizer(
 
         private const val MAX_BOXES_TO_CLASSIFY = 96
         private const val MAX_ACCEPTED_SYMBOLS = 64
+
+        // Temporary UI diagnostics. Keep small to avoid retaining too many Bitmaps.
+        private const val DEBUG_CAPTURE_ENABLED = true
+        private const val MAX_DEBUG_CROPS = 24
     }
 
     private val detector = SymbolDetector(context.applicationContext)
@@ -58,6 +62,12 @@ class FormulaRecognizer(
         }
 
         val startNs = SystemClock.elapsedRealtimeNanos()
+
+        if (DEBUG_CAPTURE_ENABLED) {
+            FormulaDebugStore.clear()
+        }
+
+        val debugCrops = ArrayList<FormulaDebugCrop>()
         val detection = detector.detect(bitmap)
 
         if (detection.boxes.isEmpty()) {
@@ -76,7 +86,7 @@ class FormulaRecognizer(
             .sortedByDescending { it.confidence }
             .take(MAX_BOXES_TO_CLASSIFY)
 
-        for (box in candidateBoxes) {
+        for ((detectorIndex, box) in candidateBoxes.withIndex()) {
             val crop = cropWithPadding(bitmap, box) ?: continue
 
             if (!StructuralTokenRecognizer.isMeaningfulCrop(crop)) {
@@ -87,6 +97,20 @@ class FormulaRecognizer(
             // to override a plausible horizontal/operator crop, so textured crops
             // cannot all turn into '=' before the classifier gets a chance.
             val classification = classifier.classify(crop, topK)
+
+            if (DEBUG_CAPTURE_ENABLED && debugCrops.size < MAX_DEBUG_CROPS) {
+                debugCrops += FormulaDebugCrop(
+                    detectorIndex = detectorIndex,
+                    rawCrop = crop,
+                    canonicalClassifierInput = classifier.preprocessForDebug(crop),
+                    detectorConfidence = box.confidence,
+                    classifierTopK = classification.topK,
+                    boundingBox = normalizedBox(box, bitmap),
+                    rawWidth = crop.width,
+                    rawHeight = crop.height
+                )
+            }
+
             var best = classification.best
             var topPredictions = classification.topK
 
@@ -125,6 +149,10 @@ class FormulaRecognizer(
                     (classification.reliable || best.name == "equal") &&
                         box.confidence >= MIN_DETECTOR_CONFIDENCE
             )
+        }
+
+        if (DEBUG_CAPTURE_ENABLED) {
+            FormulaDebugStore.publish(debugCrops)
         }
 
         if (recognized.isEmpty()) {

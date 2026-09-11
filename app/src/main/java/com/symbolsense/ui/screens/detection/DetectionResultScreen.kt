@@ -1,6 +1,7 @@
 package com.symbolsense.ui.screens.detection
 
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,10 +21,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.symbolsense.ai.FormulaDebugStore
 import com.symbolsense.ai.RecognitionMode
 import com.symbolsense.ai.SymbolRecognitionResult
 import com.symbolsense.ui.components.AppTopBar
@@ -47,6 +50,7 @@ fun DetectionResultScreen(
     val symbols = result.symbols
     val symbolCount = symbols.size.coerceAtLeast(1)
     val isMultiPipeline = result.mode != RecognitionMode.ISOLATED
+    val debugCrops = FormulaDebugStore.latest
 
     Column(
         modifier = Modifier
@@ -196,6 +200,134 @@ fun DetectionResultScreen(
                         value = result.structuredLatex.ifBlank { result.best.latex },
                         mono = true
                     )
+                }
+            }
+
+
+            if (debugCrops.isNotEmpty() && isMultiPipeline) {
+                item {
+                    SDivider(indent = 16)
+
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = 16.dp,
+                            vertical = 14.dp
+                        )
+                    ) {
+                        Text(
+                            text = "DEBUG crop → classifier",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+
+                        Spacer(Modifier.height(3.dp))
+
+                        Text(
+                            text = "Kiri = crop detector • kanan = input 64×64 classifier",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AmberWarning
+                        )
+                    }
+                }
+
+                itemsIndexed(debugCrops) { index, entry ->
+                    if (index > 0) {
+                        SDivider(indent = 16)
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "D${(entry.detectorIndex + 1).toString().padStart(2, '0')}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiaryLight,
+                                modifier = Modifier.padding(end = 10.dp)
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .size(76.dp)
+                                    .background(Color.White),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    bitmap = entry.rawCrop.asImageBitmap(),
+                                    contentDescription = "Raw detector crop",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(4.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+
+                            Spacer(Modifier.size(8.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .size(76.dp)
+                                    .background(Color.White),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    bitmap = entry.canonicalClassifierInput.asImageBitmap(),
+                                    contentDescription = "Canonical classifier input",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(4.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+
+                            Spacer(Modifier.size(10.dp))
+
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                val bestDebug = entry.classifierTopK.firstOrNull()
+
+                                Text(
+                                    text = bestDebug?.let {
+                                        "${it.name} ${percent(it.confidence)}"
+                                    } ?: "no prediction",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Text(
+                                    text = "det ${percent(entry.detectorConfidence)} • raw ${entry.rawWidth}×${entry.rawHeight}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondaryLight
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+
+                        Text(
+                            text = "Top-3: " + entry.classifierTopK.joinToString("  |  ") {
+                                "${it.name} ${percent(it.confidence)}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondaryLight
+                        )
+
+                        Text(
+                            text = String.format(
+                                "bbox L%.3f T%.3f R%.3f B%.3f",
+                                entry.boundingBox.left,
+                                entry.boundingBox.top,
+                                entry.boundingBox.right,
+                                entry.boundingBox.bottom
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiaryLight
+                        )
+                    }
                 }
             }
 
