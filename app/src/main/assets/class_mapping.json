@@ -1,20 +1,5 @@
 {
-  "version": "SymbolSense_Math_V4_CameraRobust",
-  "candidate_classes": 37,
-  "num_classes": 32,
-  "num_active_classes": 32,
-  "input_shape": [
-    64,
-    64,
-    1
-  ],
-  "excluded_candidate_classes": [
-    "equal",
-    "lparen",
-    "rparen",
-    "dot",
-    "comma"
-  ],
+  "version": "classifier_v5_1_int8_rescue",
   "classes": [
     {
       "id": 0,
@@ -85,7 +70,7 @@
     {
       "id": 11,
       "name": "minus",
-      "display": "-",
+      "display": "−",
       "latex": "-"
     },
     {
@@ -170,7 +155,7 @@
       "id": 25,
       "name": "sqrt",
       "display": "√",
-      "latex": "\\sqrt"
+      "latex": "\\sqrt{}"
     },
     {
       "id": 26,

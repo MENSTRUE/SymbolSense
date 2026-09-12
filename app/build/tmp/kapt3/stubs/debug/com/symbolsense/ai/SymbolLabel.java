@@ -21,7 +21,9 @@ import java.nio.ByteOrder;
  * Runtime contract:
  * - 1 crop = 1 symbol
  * - input model = [1, 64, 64, 1]
- * - UINT8 input / UINT8 output
+ * - FINAL V5.1.1 classifier asset = symbolsense_model_fp16.tflite
+ * - FP16-weight TFLite model uses FLOAT32 input / FLOAT32 output
+ * - UINT8 is still supported as an optional fallback
  * - exact 32 Android classes
  * - times = ID 12
  * - pi    = ID 27

@@ -29,7 +29,9 @@ import kotlin.math.sqrt
  * Runtime contract:
  * - 1 crop = 1 symbol
  * - input model = [1, 64, 64, 1]
- * - UINT8 input / UINT8 output
+ * - FINAL V5.1.1 classifier asset = symbolsense_model_fp16.tflite
+ * - FP16-weight TFLite model uses FLOAT32 input / FLOAT32 output
+ * - UINT8 is still supported as an optional fallback
  * - exact 32 Android classes
  * - times = ID 12
  * - pi    = ID 27
@@ -107,7 +109,7 @@ class SymbolClassifier(
 ) : Closeable {
 
     companion object {
-        private const val MODEL_FILE_NAME = "symbolsense_model_int8.tflite"
+        private const val MODEL_FILE_NAME = "symbolsense_model_fp16.tflite"
         private const val MAPPING_FILE_NAME = "class_mapping.json"
 
         private const val INPUT_SIZE = 64
@@ -176,8 +178,8 @@ class SymbolClassifier(
         val actualNames = labels.map { it.name }
         require(actualNames == EXPECTED_ACTIVE_32) {
             "Urutan class_mapping.json berubah.\n" +
-                "Expected=$EXPECTED_ACTIVE_32\n" +
-                "Actual=$actualNames"
+                    "Expected=$EXPECTED_ACTIVE_32\n" +
+                    "Actual=$actualNames"
         }
 
         require(labels[12].name == "times") {
@@ -190,28 +192,40 @@ class SymbolClassifier(
 
         require(inputShape.contentEquals(intArrayOf(1, 64, 64, 1))) {
             "Model input tidak sesuai. Expected [1,64,64,1], " +
-                "actual=${inputShape.contentToString()}"
+                    "actual=${inputShape.contentToString()}"
         }
 
-        require(inputTensor.dataType() == DataType.UINT8) {
-            "Model harus UINT8 input. Actual=${inputTensor.dataType()}"
+        require(
+            inputTensor.dataType() == DataType.FLOAT32 ||
+                    inputTensor.dataType() == DataType.UINT8
+        ) {
+            "Model input dtype tidak didukung. " +
+                    "Expected FLOAT32 atau UINT8, actual=${inputTensor.dataType()}"
         }
 
-        require(outputTensor.dataType() == DataType.UINT8) {
-            "Model harus UINT8 output. Actual=${outputTensor.dataType()}"
+        require(
+            outputTensor.dataType() == DataType.FLOAT32 ||
+                    outputTensor.dataType() == DataType.UINT8
+        ) {
+            "Model output dtype tidak didukung. " +
+                    "Expected FLOAT32 atau UINT8, actual=${outputTensor.dataType()}"
         }
 
         require(outputShape.last() == labels.size) {
             "Jumlah output model (${outputShape.last()}) tidak sama dengan " +
-                "class_mapping.json (${labels.size})."
+                    "class_mapping.json (${labels.size})."
         }
 
-        require(inputQuantization.scale > 0f) {
-            "Input quantization scale tidak valid."
+        if (inputTensor.dataType() == DataType.UINT8) {
+            require(inputQuantization.scale > 0f) {
+                "Input quantization scale tidak valid."
+            }
         }
 
-        require(outputQuantization.scale > 0f) {
-            "Output quantization scale tidak valid."
+        if (outputTensor.dataType() == DataType.UINT8) {
+            require(outputQuantization.scale > 0f) {
+                "Output quantization scale tidak valid."
+            }
         }
     }
 
@@ -226,15 +240,39 @@ class SymbolClassifier(
         val preparedPixels = preprocessCameraRobust(bitmap)
         val inputBuffer = createInputBuffer(preparedPixels)
 
-        val output = Array(1) {
-            ByteArray(labels.size)
+        val startNs = SystemClock.elapsedRealtimeNanos()
+
+        val probabilities = when (outputTensor.dataType()) {
+            DataType.FLOAT32 -> {
+                val output = Array(1) {
+                    FloatArray(labels.size)
+                }
+
+                interpreter.run(inputBuffer, output)
+
+                FloatArray(labels.size) { index ->
+                    output[0][index].coerceIn(0f, 1f)
+                }
+            }
+
+            DataType.UINT8 -> {
+                val output = Array(1) {
+                    ByteArray(labels.size)
+                }
+
+                interpreter.run(inputBuffer, output)
+                dequantizeOutput(output[0])
+            }
+
+            else -> {
+                error(
+                    "Output dtype tidak didukung saat inference: " +
+                            outputTensor.dataType()
+                )
+            }
         }
 
-        val startNs = SystemClock.elapsedRealtimeNanos()
-        interpreter.run(inputBuffer, output)
         val endNs = SystemClock.elapsedRealtimeNanos()
-
-        val probabilities = dequantizeOutput(output[0])
 
         val predictions = probabilities
             .mapIndexed { index, confidence ->
@@ -270,6 +308,18 @@ class SymbolClassifier(
             bitmap = loadBitmap(uri),
             topK = topK
         )
+    }
+
+
+    /**
+     * Useful for Logcat / debug screen verification.
+     * For the final V5.1.1 FP16 asset this should report FLOAT32/FLOAT32.
+     */
+    fun runtimeContract(): String {
+        return "model=$modelFileName, " +
+                "input=${inputShape.contentToString()} ${inputTensor.dataType()}, " +
+                "output=${outputShape.contentToString()} ${outputTensor.dataType()}, " +
+                "classes=${labels.size}"
     }
 
 
@@ -510,7 +560,7 @@ class SymbolClassifier(
 
     private fun Bitmap.isHardwareBitmap(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            config == Bitmap.Config.HARDWARE
+                config == Bitmap.Config.HARDWARE
     }
 
     /**
@@ -541,10 +591,10 @@ class SymbolClassifier(
             val b = Color.blue(color)
 
             val luminance = (
-                0.299 * r +
-                    0.587 * g +
-                    0.114 * b
-                )
+                    0.299 * r +
+                            0.587 * g +
+                            0.114 * b
+                    )
                 .roundToInt()
                 .coerceIn(0, 255)
 
@@ -671,9 +721,9 @@ class SymbolClassifier(
 
         val numerator =
             12.0 * sigma * sigma -
-                n * wl * wl -
-                4.0 * n * wl -
-                3.0 * n
+                    n * wl * wl -
+                    4.0 * n * wl -
+                    3.0 * n
 
         val denominator = -4.0 * wl - 4.0
         val m = (numerator / denominator)
@@ -775,8 +825,8 @@ class SymbolClassifier(
 
                 val value =
                     a * u8(source[row + xl]) +
-                        b * u8(source[row + x]) +
-                        a * u8(source[row + xr])
+                            b * u8(source[row + x]) +
+                            a * u8(source[row + xr])
 
                 horizontal[row + x] = value
                     .roundToInt()
@@ -794,8 +844,8 @@ class SymbolClassifier(
             for (x in 0 until width) {
                 val value =
                     a * u8(horizontal[yu * width + x]) +
-                        b * u8(horizontal[y * width + x]) +
-                        a * u8(horizontal[yd * width + x])
+                            b * u8(horizontal[y * width + x]) +
+                            a * u8(horizontal[yd * width + x])
 
                 output[y * width + x] = value
                     .roundToInt()
@@ -844,8 +894,8 @@ class SymbolClassifier(
             val delta = meanBackground - meanForeground
             val varianceBetween =
                 weightBackground.toDouble() *
-                    weightForeground.toDouble() *
-                    delta * delta
+                        weightForeground.toDouble() *
+                        delta * delta
 
             if (varianceBetween > bestVariance) {
                 bestVariance = varianceBetween
@@ -976,10 +1026,10 @@ class SymbolClassifier(
             .take(24)
             .filter { component ->
                 component.area >= minRelativeArea &&
-                    hypot(
-                        component.cx - centerX,
-                        component.cy - centerY
-                    ) <= 1.35 * diagonal
+                        hypot(
+                            component.cx - centerX,
+                            component.cy - centerY
+                        ) <= 1.35 * diagonal
             }
 
         if (keep.isEmpty()) {
@@ -1288,8 +1338,15 @@ class SymbolClassifier(
     }
 
     /**
-     * Training model receives float pixel/255.0 and the exported model is UINT8.
-     * Therefore we quantize canonical grayscale using the TFLite tensor parameters.
+     * Canonical preprocessing always produces grayscale bytes in [0,255].
+     *
+     * V5.1.1 FP16 TFLite:
+     * - weights are FP16 internally
+     * - input tensor is FLOAT32
+     * - output tensor is FLOAT32
+     *
+     * We also keep UINT8 support so this class remains compatible with a
+     * quantized fallback model if needed later.
      */
     private fun createInputBuffer(
         pixels: ByteArray
@@ -1298,28 +1355,51 @@ class SymbolClassifier(
             "Prepared image harus 64x64, actual bytes=${pixels.size}."
         }
 
-        val buffer = ByteBuffer
-            .allocateDirect(INPUT_SIZE * INPUT_SIZE)
-            .order(ByteOrder.nativeOrder())
+        return when (inputTensor.dataType()) {
+            DataType.FLOAT32 -> {
+                ByteBuffer
+                    .allocateDirect(INPUT_SIZE * INPUT_SIZE * 4)
+                    .order(ByteOrder.nativeOrder())
+                    .apply {
+                        for (pixelByte in pixels) {
+                            val pixel = u8(pixelByte)
+                            putFloat(pixel / 255.0f)
+                        }
+                        rewind()
+                    }
+            }
 
-        val scale = inputQuantization.scale
-        val zeroPoint = inputQuantization.zeroPoint
+            DataType.UINT8 -> {
+                val scale = inputQuantization.scale
+                val zeroPoint = inputQuantization.zeroPoint
 
-        for (pixelByte in pixels) {
-            val pixel = u8(pixelByte)
-            val realValue = pixel / 255.0f
+                ByteBuffer
+                    .allocateDirect(INPUT_SIZE * INPUT_SIZE)
+                    .order(ByteOrder.nativeOrder())
+                    .apply {
+                        for (pixelByte in pixels) {
+                            val pixel = u8(pixelByte)
+                            val realValue = pixel / 255.0f
 
-            val quantized = (
-                realValue / scale + zeroPoint
+                            val quantized = (
+                                    realValue / scale + zeroPoint
+                                    )
+                                .roundToInt()
+                                .coerceIn(0, 255)
+
+                            put(quantized.toByte())
+                        }
+                        rewind()
+                    }
+            }
+
+            else -> {
+                error(
+                    "Input dtype tidak didukung saat membuat buffer: " +
+                            inputTensor.dataType()
                 )
-                .roundToInt()
-                .coerceIn(0, 255)
-
-            buffer.put(quantized.toByte())
+            }
         }
-
-        buffer.rewind()
-        return buffer
     }
 
     private fun dequantizeOutput(
