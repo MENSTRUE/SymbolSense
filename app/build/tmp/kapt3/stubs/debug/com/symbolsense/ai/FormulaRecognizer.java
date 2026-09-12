@@ -36,6 +36,8 @@ public final class FormulaRecognizer implements java.io.Closeable {
     private static final float MIN_COMBINED_SCORE = 0.3F;
     private static final int MAX_BOXES_TO_CLASSIFY = 96;
     private static final int MAX_ACCEPTED_SYMBOLS = 64;
+    private static final boolean DEBUG_CAPTURE_ENABLED = true;
+    private static final int MAX_DEBUG_CROPS = 24;
     @org.jetbrains.annotations.NotNull()
     private final com.symbolsense.ai.SymbolDetector detector = null;
     @org.jetbrains.annotations.NotNull()
@@ -98,7 +100,7 @@ public final class FormulaRecognizer implements java.io.Closeable {
     public void close() {
     }
     
-    @kotlin.Metadata(mv = {1, 9, 0}, k = 1, xi = 48, d1 = {"\u0000\u001a\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\b\n\u0000\n\u0002\u0010\u0007\n\u0002\b\u0007\b\u0086\u0003\u0018\u00002\u00020\u0001B\u0007\b\u0002\u00a2\u0006\u0002\u0010\u0002R\u000e\u0010\u0003\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0005\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0007\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\b\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\t\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\n\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u000b\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\f\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000\u00a8\u0006\r"}, d2 = {"Lcom/symbolsense/ai/FormulaRecognizer$Companion;", "", "()V", "CLASSIFIER_TOP_K", "", "CROP_PADDING_RATIO", "", "MAX_ACCEPTED_SYMBOLS", "MAX_BOXES_TO_CLASSIFY", "MIN_CLASSIFIER_CONFIDENCE", "MIN_COMBINED_SCORE", "MIN_DETECTOR_CONFIDENCE", "STRONG_CLASSIFIER_CONFIDENCE", "app_debug"})
+    @kotlin.Metadata(mv = {1, 9, 0}, k = 1, xi = 48, d1 = {"\u0000 \n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\b\n\u0000\n\u0002\u0010\u0007\n\u0000\n\u0002\u0010\u000b\n\u0002\b\b\b\u0086\u0003\u0018\u00002\u00020\u0001B\u0007\b\u0002\u00a2\u0006\u0002\u0010\u0002R\u000e\u0010\u0003\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0005\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0007\u001a\u00020\bX\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\t\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\n\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u000b\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\f\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\r\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u000e\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u000f\u001a\u00020\u0006X\u0082T\u00a2\u0006\u0002\n\u0000\u00a8\u0006\u0010"}, d2 = {"Lcom/symbolsense/ai/FormulaRecognizer$Companion;", "", "()V", "CLASSIFIER_TOP_K", "", "CROP_PADDING_RATIO", "", "DEBUG_CAPTURE_ENABLED", "", "MAX_ACCEPTED_SYMBOLS", "MAX_BOXES_TO_CLASSIFY", "MAX_DEBUG_CROPS", "MIN_CLASSIFIER_CONFIDENCE", "MIN_COMBINED_SCORE", "MIN_DETECTOR_CONFIDENCE", "STRONG_CLASSIFIER_CONFIDENCE", "app_debug"})
     public static final class Companion {
         
         private Companion() {

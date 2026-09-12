@@ -6,6 +6,7 @@ import androidx.compose.ui.Alignment;
 import androidx.compose.ui.Modifier;
 import androidx.compose.ui.layout.ContentScale;
 import androidx.compose.ui.text.font.FontWeight;
+import com.symbolsense.ai.FormulaDebugStore;
 import com.symbolsense.ai.RecognitionMode;
 import com.symbolsense.ai.SymbolRecognitionResult;
 
