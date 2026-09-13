@@ -1,11 +1,12 @@
 package com.symbolsense.ai;
 
-@kotlin.Metadata(mv = {1, 9, 0}, k = 1, xi = 48, d1 = {"\u0000V\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\u0007\n\u0002\b\u0004\n\u0002\u0010\"\n\u0002\u0010\u000e\n\u0002\b\u0004\n\u0002\u0010$\n\u0002\b\u0002\n\u0002\u0010\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0010 \n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0010\u000b\n\u0002\b\u0005\n\u0002\u0018\u0002\n\u0002\b\t\b\u00c6\u0002\u0018\u00002\u00020\u0001:\u0001+B\u0007\b\u0002\u00a2\u0006\u0002\u0010\u0002J\u001c\u0010\u0011\u001a\u00020\u00122\n\u0010\u0013\u001a\u00060\u0014j\u0002`\u00152\u0006\u0010\u0016\u001a\u00020\nH\u0002J\u0016\u0010\u0017\u001a\u00020\n2\f\u0010\u0018\u001a\b\u0012\u0004\u0012\u00020\u001a0\u0019H\u0002J\u0016\u0010\u001b\u001a\u00020\n2\f\u0010\u0018\u001a\b\u0012\u0004\u0012\u00020\u001a0\u0019H\u0002J\u0010\u0010\u001c\u001a\u00020\u001d2\u0006\u0010\u001e\u001a\u00020\nH\u0002J\u0010\u0010\u001f\u001a\u00020\u001d2\u0006\u0010\u001e\u001a\u00020\nH\u0002J\u0016\u0010 \u001a\u00020\u00042\f\u0010!\u001a\b\u0012\u0004\u0012\u00020\u00040\u0019H\u0002J\u0014\u0010\"\u001a\u00020#2\f\u0010\u0018\u001a\b\u0012\u0004\u0012\u00020\u001a0\u0019J\u0016\u0010$\u001a\u00020\n2\f\u0010\u0018\u001a\b\u0012\u0004\u0012\u00020\u001a0\u0019H\u0002J\u001c\u0010%\u001a\b\u0012\u0004\u0012\u00020\u001a0\u00192\f\u0010\u0018\u001a\b\u0012\u0004\u0012\u00020\u001a0\u0019H\u0002J(\u0010&\u001a\u00020\u001d2\u0006\u0010\'\u001a\u00020\u001a2\u0006\u0010(\u001a\u00020\u001a2\u0006\u0010)\u001a\u00020\u001a2\u0006\u0010*\u001a\u00020\u0004H\u0002R\u000e\u0010\u0003\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0005\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0006\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0007\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u0014\u0010\b\u001a\b\u0012\u0004\u0012\u00020\n0\tX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\u000b\u001a\b\u0012\u0004\u0012\u00020\n0\tX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\f\u001a\b\u0012\u0004\u0012\u00020\n0\tX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\r\u001a\b\u0012\u0004\u0012\u00020\n0\tX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u001a\u0010\u000e\u001a\u000e\u0012\u0004\u0012\u00020\n\u0012\u0004\u0012\u00020\n0\u000fX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\u0010\u001a\b\u0012\u0004\u0012\u00020\n0\tX\u0082\u0004\u00a2\u0006\u0002\n\u0000\u00a8\u0006,"}, d2 = {"Lcom/symbolsense/ai/SpatialParserV2;", "", "()V", "GENERIC_OPERATOR_MAX_BEST_CONFIDENCE", "", "GENERIC_OPERATOR_MIN_RATIO_TO_BEST", "GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE", "X_TIMES_MIN_TOPK_CONFIDENCE", "contextualOperatorNames", "", "", "digitNames", "invalidSuperscriptBases", "operatorNames", "superscriptDisplay", "", "variableNames", "appendSpaced", "", "out", "Ljava/lang/StringBuilder;", "Lkotlin/text/StringBuilder;", "token", "buildLinearDisplay", "symbols", "", "Lcom/symbolsense/ai/RecognizedSymbol;", "buildLinearLatex", "isLeftOperandLike", "", "name", "isRightOperandLike", "median", "values", "parse", "Lcom/symbolsense/ai/ParsedFormulaV2;", "renderSuperscriptDisplay", "rerankLinearContext", "sameMainLine", "left", "current", "right", "medianHeight", "Positioned", "app_debug"})
+@kotlin.Metadata(mv = {1, 9, 0}, k = 1, xi = 48, d1 = {"\u0000V\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\u0007\n\u0002\b\u0005\n\u0002\u0010\"\n\u0002\u0010\u000e\n\u0002\b\u0004\n\u0002\u0010$\n\u0002\b\u0002\n\u0002\u0010\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0010 \n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0010\u000b\n\u0002\b\n\n\u0002\u0018\u0002\n\u0002\b\u0005\b\u00c6\u0002\u0018\u00002\u00020\u0001:\u0001-B\u0007\b\u0002\u00a2\u0006\u0002\u0010\u0002J\u001c\u0010\u0012\u001a\u00020\u00132\n\u0010\u0014\u001a\u00060\u0015j\u0002`\u00162\u0006\u0010\u0017\u001a\u00020\u000bH\u0002J\u0016\u0010\u0018\u001a\u00020\u000b2\f\u0010\u0019\u001a\b\u0012\u0004\u0012\u00020\u001b0\u001aH\u0002J\u0016\u0010\u001c\u001a\u00020\u000b2\f\u0010\u0019\u001a\b\u0012\u0004\u0012\u00020\u001b0\u001aH\u0002J(\u0010\u001d\u001a\u00020\u001e2\u0006\u0010\u001f\u001a\u00020\u001b2\u0006\u0010 \u001a\u00020\u001b2\u0006\u0010!\u001a\u00020\u001b2\u0006\u0010\"\u001a\u00020\u0004H\u0002J\u0010\u0010#\u001a\u00020\u001e2\u0006\u0010$\u001a\u00020\u000bH\u0002J\u0010\u0010%\u001a\u00020\u001e2\u0006\u0010$\u001a\u00020\u000bH\u0002J\u0016\u0010&\u001a\u00020\u00042\f\u0010\'\u001a\b\u0012\u0004\u0012\u00020\u00040\u001aH\u0002J\u0014\u0010(\u001a\u00020)2\f\u0010\u0019\u001a\b\u0012\u0004\u0012\u00020\u001b0\u001aJ\u0016\u0010*\u001a\u00020\u000b2\f\u0010\u0019\u001a\b\u0012\u0004\u0012\u00020\u001b0\u001aH\u0002J\u001c\u0010+\u001a\b\u0012\u0004\u0012\u00020\u001b0\u001a2\f\u0010\u0019\u001a\b\u0012\u0004\u0012\u00020\u001b0\u001aH\u0002J(\u0010,\u001a\u00020\u001e2\u0006\u0010\u001f\u001a\u00020\u001b2\u0006\u0010 \u001a\u00020\u001b2\u0006\u0010!\u001a\u00020\u001b2\u0006\u0010\"\u001a\u00020\u0004H\u0002R\u000e\u0010\u0003\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0005\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0006\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\u0007\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u000e\u0010\b\u001a\u00020\u0004X\u0082T\u00a2\u0006\u0002\n\u0000R\u0014\u0010\t\u001a\b\u0012\u0004\u0012\u00020\u000b0\nX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\f\u001a\b\u0012\u0004\u0012\u00020\u000b0\nX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\r\u001a\b\u0012\u0004\u0012\u00020\u000b0\nX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\u000e\u001a\b\u0012\u0004\u0012\u00020\u000b0\nX\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u001a\u0010\u000f\u001a\u000e\u0012\u0004\u0012\u00020\u000b\u0012\u0004\u0012\u00020\u000b0\u0010X\u0082\u0004\u00a2\u0006\u0002\n\u0000R\u0014\u0010\u0011\u001a\b\u0012\u0004\u0012\u00020\u000b0\nX\u0082\u0004\u00a2\u0006\u0002\n\u0000\u00a8\u0006."}, d2 = {"Lcom/symbolsense/ai/SpatialParserV2;", "", "()V", "GENERIC_OPERATOR_MAX_BEST_CONFIDENCE", "", "GENERIC_OPERATOR_MIN_RATIO_TO_BEST", "GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE", "X_TIMES_CONTEXT_CONFIDENCE_SCALE", "X_TIMES_MIN_TOPK_CONFIDENCE", "contextualOperatorNames", "", "", "digitNames", "invalidSuperscriptBases", "operatorNames", "superscriptDisplay", "", "variableNames", "appendSpaced", "", "out", "Ljava/lang/StringBuilder;", "Lkotlin/text/StringBuilder;", "token", "buildLinearDisplay", "symbols", "", "Lcom/symbolsense/ai/RecognizedSymbol;", "buildLinearLatex", "hasBinaryOperatorSpacing", "", "left", "current", "right", "medianHeight", "isLeftOperandLike", "name", "isRightOperandLike", "median", "values", "parse", "Lcom/symbolsense/ai/ParsedFormulaV2;", "renderSuperscriptDisplay", "rerankLinearContext", "sameMainLine", "Positioned", "app_debug"})
 public final class SpatialParserV2 {
-    private static final float X_TIMES_MIN_TOPK_CONFIDENCE = 0.04F;
-    private static final float GENERIC_OPERATOR_MAX_BEST_CONFIDENCE = 0.8F;
-    private static final float GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE = 0.12F;
-    private static final float GENERIC_OPERATOR_MIN_RATIO_TO_BEST = 0.18F;
+    private static final float X_TIMES_MIN_TOPK_CONFIDENCE = 0.015F;
+    private static final float X_TIMES_CONTEXT_CONFIDENCE_SCALE = 0.6F;
+    private static final float GENERIC_OPERATOR_MAX_BEST_CONFIDENCE = 0.9F;
+    private static final float GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE = 0.1F;
+    private static final float GENERIC_OPERATOR_MIN_RATIO_TO_BEST = 0.12F;
     @org.jetbrains.annotations.NotNull()
     private static final java.util.Set<java.lang.String> operatorNames = null;
     @org.jetbrains.annotations.NotNull()
@@ -31,8 +32,30 @@ public final class SpatialParserV2 {
         return null;
     }
     
+    /**
+     * Context-aware correction for one-line expressions.
+     *
+     * Real example:
+     *
+     *  raw classifier:
+     *  a, 9(82%)/plus(13%), b, x(67%)/times(30%), 2
+     *
+     *  parser:
+     *  a + b × 2
+     *
+     * No global label replacement is performed.
+     */
     private final java.util.List<com.symbolsense.ai.RecognizedSymbol> rerankLinearContext(java.util.List<com.symbolsense.ai.RecognizedSymbol> symbols) {
         return null;
+    }
+    
+    /**
+     * A real binary operator normally leaves visible horizontal spacing
+     * on both sides. This gives the context fallback a geometry signal
+     * without looking at the image pixels.
+     */
+    private final boolean hasBinaryOperatorSpacing(com.symbolsense.ai.RecognizedSymbol left, com.symbolsense.ai.RecognizedSymbol current, com.symbolsense.ai.RecognizedSymbol right, float medianHeight) {
+        return false;
     }
     
     private final boolean isLeftOperandLike(java.lang.String name) {

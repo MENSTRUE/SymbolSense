@@ -33,7 +33,7 @@ class FormulaRecognizer(
 ) : Closeable {
 
     companion object {
-        private const val CLASSIFIER_TOP_K = 3
+        private const val CLASSIFIER_TOP_K = 5
         private const val CROP_PADDING_RATIO = 0.12f
 
         private const val MIN_DETECTOR_CONFIDENCE = 0.60f

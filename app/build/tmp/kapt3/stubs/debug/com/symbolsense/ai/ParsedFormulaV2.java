@@ -1,25 +1,25 @@
 package com.symbolsense.ai;
 
 /**
- * Spatial parser V2.1.
+ * Spatial parser V2.2 / SymbolSense V5.3.
  *
- * Adds to V2:
+ * Adds:
  * - one-line baseline estimation
  * - superscript attachment, e.g. a² -> a^{2}
  * - structural '=' spacing
- * - context-aware x <-> times disambiguation
- * - conservative top-K operator recovery for ambiguous glyphs
+ * - stable x <-> times disambiguation
+ * - conservative top-K operator recovery
+ * - operator-spacing check to avoid blindly converting variables/digits
  *
  * Important:
- * - This does NOT globally rename x to times.
- * - A contextual replacement is only allowed when the token is physically
- *  between two operand-like tokens on the same baseline.
- * - For x -> times, "times" must already exist in classifier top-K.
- * - For other operator recovery, the operator candidate must already exist
- *  in classifier top-K and pass conservative confidence/ratio gates.
+ * 1) x is NOT globally changed into times.
+ * 2) x -> times only when it is between operand-like tokens on the same line.
+ * 3) Prefer a real "times" candidate from top-K.
+ * 4) If "times" falls outside top-K, a geometry/context fallback is allowed
+ *   only when the token has binary-operator spacing.
+ * 5) Generic operator recovery only uses candidates already present in top-K.
  *
- * It deliberately does NOT pretend to solve full 2D mathematics yet.
- * Fractions, integral limits, matrices, nested radicals, etc. remain future work.
+ * Full 2D structures (fractions, matrices, nested radicals, etc.) remain future work.
  */
 @kotlin.Metadata(mv = {1, 9, 0}, k = 1, xi = 48, d1 = {"\u0000,\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0000\n\u0002\u0010 \n\u0002\u0018\u0002\n\u0000\n\u0002\u0010\u000e\n\u0002\b\f\n\u0002\u0010\u000b\n\u0002\b\u0002\n\u0002\u0010\b\n\u0002\b\u0002\b\u0086\b\u0018\u00002\u00020\u0001B#\u0012\f\u0010\u0002\u001a\b\u0012\u0004\u0012\u00020\u00040\u0003\u0012\u0006\u0010\u0005\u001a\u00020\u0006\u0012\u0006\u0010\u0007\u001a\u00020\u0006\u00a2\u0006\u0002\u0010\bJ\u000f\u0010\u000e\u001a\b\u0012\u0004\u0012\u00020\u00040\u0003H\u00c6\u0003J\t\u0010\u000f\u001a\u00020\u0006H\u00c6\u0003J\t\u0010\u0010\u001a\u00020\u0006H\u00c6\u0003J-\u0010\u0011\u001a\u00020\u00002\u000e\b\u0002\u0010\u0002\u001a\b\u0012\u0004\u0012\u00020\u00040\u00032\b\b\u0002\u0010\u0005\u001a\u00020\u00062\b\b\u0002\u0010\u0007\u001a\u00020\u0006H\u00c6\u0001J\u0013\u0010\u0012\u001a\u00020\u00132\b\u0010\u0014\u001a\u0004\u0018\u00010\u0001H\u00d6\u0003J\t\u0010\u0015\u001a\u00020\u0016H\u00d6\u0001J\t\u0010\u0017\u001a\u00020\u0006H\u00d6\u0001R\u0011\u0010\u0005\u001a\u00020\u0006\u00a2\u0006\b\n\u0000\u001a\u0004\b\t\u0010\nR\u0011\u0010\u0007\u001a\u00020\u0006\u00a2\u0006\b\n\u0000\u001a\u0004\b\u000b\u0010\nR\u0017\u0010\u0002\u001a\b\u0012\u0004\u0012\u00020\u00040\u0003\u00a2\u0006\b\n\u0000\u001a\u0004\b\f\u0010\r\u00a8\u0006\u0018"}, d2 = {"Lcom/symbolsense/ai/ParsedFormulaV2;", "", "orderedSymbols", "", "Lcom/symbolsense/ai/RecognizedSymbol;", "display", "", "latex", "(Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V", "getDisplay", "()Ljava/lang/String;", "getLatex", "getOrderedSymbols", "()Ljava/util/List;", "component1", "component2", "component3", "copy", "equals", "", "other", "hashCode", "", "toString", "app_debug"})
 public final class ParsedFormulaV2 {

@@ -28,7 +28,7 @@ import java.io.Closeable;
 public final class FormulaRecognizer implements java.io.Closeable {
     @org.jetbrains.annotations.NotNull()
     private final android.content.Context context = null;
-    private static final int CLASSIFIER_TOP_K = 3;
+    private static final int CLASSIFIER_TOP_K = 5;
     private static final float CROP_PADDING_RATIO = 0.12F;
     private static final float MIN_DETECTOR_CONFIDENCE = 0.6F;
     private static final float MIN_CLASSIFIER_CONFIDENCE = 0.55F;
