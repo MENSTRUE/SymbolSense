@@ -23,7 +23,7 @@ import kotlin.math.min
  * -> existing exact-32 SymbolClassifier
  * -> false-positive rejection
  * -> stacked-minus '=' merge fallback
- * -> SpatialParserV2 (linear + superscript)
+ * -> SpatialParserV2 (linear + superscript + context reranking)
  *
  * The isolated 32-class classifier model is intentionally NOT retrained or
  * expanded here. times=12 and pi=27 remain unchanged.
@@ -36,8 +36,8 @@ class FormulaRecognizer(
         private const val CLASSIFIER_TOP_K = 3
         private const val CROP_PADDING_RATIO = 0.12f
 
-        private const val MIN_DETECTOR_CONFIDENCE = 0.35f
-        private const val MIN_CLASSIFIER_CONFIDENCE = 0.60f
+        private const val MIN_DETECTOR_CONFIDENCE = 0.60f
+        private const val MIN_CLASSIFIER_CONFIDENCE = 0.55f
         private const val STRONG_CLASSIFIER_CONFIDENCE = 0.88f
         private const val MIN_COMBINED_SCORE = 0.30f
 
@@ -116,11 +116,11 @@ class FormulaRecognizer(
 
             val equalCandidate = StructuralTokenRecognizer.recognizeEqual(crop)
             val allowEqualOverride = equalCandidate != null && (
-                best.name == "minus" ||
-                    best.name == "divide" ||
-                    (crop.width.toFloat() / kotlin.math.max(1, crop.height).toFloat() >= 1.35f &&
-                        best.confidence < 0.78f)
-                )
+                    best.name == "minus" ||
+                            best.name == "divide" ||
+                            (crop.width.toFloat() / kotlin.math.max(1, crop.height).toFloat() >= 1.35f &&
+                                    best.confidence < 0.78f)
+                    )
 
             if (allowEqualOverride) {
                 best = equalCandidate!!
@@ -130,12 +130,11 @@ class FormulaRecognizer(
             val combinedScore = box.confidence * best.confidence
 
             val classifierAccept =
-                best.confidence >= MIN_CLASSIFIER_CONFIDENCE ||
-                    best.confidence >= STRONG_CLASSIFIER_CONFIDENCE
+                best.confidence >= MIN_CLASSIFIER_CONFIDENCE
 
             val accept =
                 classifierAccept &&
-                    combinedScore >= MIN_COMBINED_SCORE
+                        combinedScore >= MIN_COMBINED_SCORE
 
             if (!accept) continue
 
@@ -146,8 +145,11 @@ class FormulaRecognizer(
                 boundingBox = normalizedBox(box, bitmap),
                 classifierInferenceTimeMs = classification.inferenceTimeMs,
                 reliable =
-                    (classification.reliable || best.name == "equal") &&
-                        box.confidence >= MIN_DETECTOR_CONFIDENCE
+                    (
+                            best.name == "equal" ||
+                                    best.confidence >= MIN_CLASSIFIER_CONFIDENCE
+                            ) &&
+                            box.confidence >= MIN_DETECTOR_CONFIDENCE
             )
         }
 
@@ -191,7 +193,7 @@ class FormulaRecognizer(
             inferenceTimeMs = (endNs - startNs) / 1_000_000.0,
             reliable =
                 ordered.isNotEmpty() &&
-                    ordered.all { it.reliable },
+                        ordered.all { it.reliable },
             symbols = ordered,
             structuredDisplay = parsed.display,
             structuredLatex = parsed.latex,
@@ -283,7 +285,7 @@ class FormulaRecognizer(
                 val overlap = max(
                     0f,
                     min(a.boundingBox.right, b.boundingBox.right) -
-                        max(a.boundingBox.left, b.boundingBox.left)
+                            max(a.boundingBox.left, b.boundingBox.left)
                 )
                 val overlapRatio = overlap / max(minW, 1e-6f)
                 if (overlapRatio < 0.65f) continue
@@ -320,8 +322,8 @@ class FormulaRecognizer(
                 display = "=",
                 latex = "=",
                 confidence = (
-                    (a.prediction.confidence + b.prediction.confidence) * 0.5f
-                    ).coerceIn(0f, 0.97f)
+                        (a.prediction.confidence + b.prediction.confidence) * 0.5f
+                        ).coerceIn(0f, 0.97f)
             )
 
             out += RecognizedSymbol(

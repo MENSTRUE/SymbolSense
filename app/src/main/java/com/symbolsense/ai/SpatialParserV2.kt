@@ -5,16 +5,25 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Spatial parser V2.
+ * Spatial parser V2.1.
  *
- * Adds to V1:
+ * Adds to V2:
  * - one-line baseline estimation
  * - superscript attachment, e.g. a² -> a^{2}
  * - structural '=' spacing
+ * - context-aware x <-> times disambiguation
+ * - conservative top-K operator recovery for ambiguous glyphs
+ *
+ * Important:
+ * - This does NOT globally rename x to times.
+ * - A contextual replacement is only allowed when the token is physically
+ *   between two operand-like tokens on the same baseline.
+ * - For x -> times, "times" must already exist in classifier top-K.
+ * - For other operator recovery, the operator candidate must already exist
+ *   in classifier top-K and pass conservative confidence/ratio gates.
  *
  * It deliberately does NOT pretend to solve full 2D mathematics yet.
  * Fractions, integral limits, matrices, nested radicals, etc. remain future work.
- *
  */
 data class ParsedFormulaV2(
     val orderedSymbols: List<RecognizedSymbol>,
@@ -23,6 +32,12 @@ data class ParsedFormulaV2(
 )
 
 object SpatialParserV2 {
+
+    private const val X_TIMES_MIN_TOPK_CONFIDENCE = 0.04f
+
+    private const val GENERIC_OPERATOR_MAX_BEST_CONFIDENCE = 0.80f
+    private const val GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE = 0.12f
+    private const val GENERIC_OPERATOR_MIN_RATIO_TO_BEST = 0.18f
 
     private val operatorNames = setOf(
         "plus",
@@ -34,6 +49,13 @@ object SpatialParserV2 {
         "greater_than",
         "less_equal",
         "greater_equal"
+    )
+
+    private val contextualOperatorNames = setOf(
+        "plus",
+        "minus",
+        "times",
+        "divide"
     )
 
     private val invalidSuperscriptBases = setOf(
@@ -65,6 +87,20 @@ object SpatialParserV2 {
         "minus" to "⁻"
     )
 
+    private val digitNames = (0..9).map { it.toString() }.toSet()
+
+    private val variableNames = setOf(
+        "x",
+        "y",
+        "z",
+        "a",
+        "b",
+        "d",
+        "e",
+        "pi",
+        "infinity"
+    )
+
     private data class Positioned(
         val symbol: RecognizedSymbol,
         val centerX: Float,
@@ -91,7 +127,9 @@ object SpatialParserV2 {
             )
         }
 
-        val positioned = symbols.map { s ->
+        val contextualSymbols = rerankLinearContext(symbols)
+
+        val positioned = contextualSymbols.map { s ->
             val b = s.boundingBox
             Positioned(
                 symbol = s,
@@ -112,7 +150,7 @@ object SpatialParserV2 {
 
         val superscriptCandidates = positioned.filter { p ->
             p.centerY < baselineY - superscriptThreshold &&
-                p.symbol.prediction.name !in operatorNames
+                    p.symbol.prediction.name !in operatorNames
         }.toMutableSet()
 
         val bases = positioned
@@ -120,7 +158,6 @@ object SpatialParserV2 {
             .sortedBy { it.centerX }
             .toMutableList()
 
-        // If the simple median classified everything as superscript, fall back.
         if (bases.isEmpty()) {
             val ordered = positioned.sortedBy { it.centerX }.map { it.symbol }
             return ParsedFormulaV2(
@@ -137,9 +174,9 @@ object SpatialParserV2 {
             val candidateBase = bases
                 .filter { base ->
                     base.symbol.prediction.name !in invalidSuperscriptBases &&
-                        sup.centerY < base.centerY - superscriptThreshold * 0.55f &&
-                        sup.centerX >= base.centerX - medianHeight * 0.15f &&
-                        sup.symbol.boundingBox.left <=
+                            sup.centerY < base.centerY - superscriptThreshold * 0.55f &&
+                            sup.centerX >= base.centerX - medianHeight * 0.15f &&
+                            sup.symbol.boundingBox.left <=
                             base.symbol.boundingBox.right + medianHeight * 1.15f
                 }
                 .minByOrNull { base ->
@@ -160,7 +197,6 @@ object SpatialParserV2 {
             }
         }
 
-        // Unattached high symbols are treated as ordinary symbols rather than lost.
         val topLevel = (bases.map { it.symbol } + unattached)
             .sortedBy { it.boundingBox.left }
 
@@ -192,7 +228,6 @@ object SpatialParserV2 {
                     latex.append("}")
                 }
 
-                // Avoid command concatenation such as \pix.
                 if (
                     p.latex.startsWith("\\") &&
                     index < topLevel.lastIndex &&
@@ -216,6 +251,128 @@ object SpatialParserV2 {
             display = display.toString().trim().replace(Regex("\\s+"), " "),
             latex = latex.toString().trim().replace(Regex("\\s+"), " ")
         )
+    }
+
+    private fun rerankLinearContext(
+        symbols: List<RecognizedSymbol>
+    ): List<RecognizedSymbol> {
+        if (symbols.size < 3) {
+            return symbols.sortedBy { it.boundingBox.left }
+        }
+
+        val ordered = symbols
+            .sortedBy { it.boundingBox.left }
+            .toMutableList()
+
+        val heights = ordered
+            .map {
+                (it.boundingBox.bottom - it.boundingBox.top)
+                    .coerceAtLeast(0.001f)
+            }
+            .sorted()
+
+        val medianHeight = median(heights).coerceAtLeast(0.02f)
+        val original = ordered.toList()
+
+        for (index in 1 until original.lastIndex) {
+            val left = original[index - 1]
+            val current = original[index]
+            val right = original[index + 1]
+
+            if (!isLeftOperandLike(left.prediction.name)) continue
+            if (!isRightOperandLike(right.prediction.name)) continue
+
+            if (
+                !sameMainLine(
+                    left = left,
+                    current = current,
+                    right = right,
+                    medianHeight = medianHeight
+                )
+            ) {
+                continue
+            }
+
+            if (current.prediction.name == "x") {
+                val timesCandidate = current.topK.firstOrNull {
+                    it.name == "times" &&
+                            it.confidence >= X_TIMES_MIN_TOPK_CONFIDENCE
+                }
+
+                if (timesCandidate != null) {
+                    ordered[index] = current.copy(
+                        prediction = timesCandidate
+                    )
+                    continue
+                }
+            }
+
+            if (
+                current.prediction.name !in operatorNames &&
+                current.prediction.confidence <=
+                GENERIC_OPERATOR_MAX_BEST_CONFIDENCE
+            ) {
+                val bestOperatorCandidate = current.topK
+                    .asSequence()
+                    .filter { it.name in contextualOperatorNames }
+                    .filter {
+                        it.confidence >=
+                                GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE
+                    }
+                    .filter {
+                        it.confidence >=
+                                current.prediction.confidence *
+                                GENERIC_OPERATOR_MIN_RATIO_TO_BEST
+                    }
+                    .maxByOrNull { it.confidence }
+
+                if (bestOperatorCandidate != null) {
+                    ordered[index] = current.copy(
+                        prediction = bestOperatorCandidate
+                    )
+                }
+            }
+        }
+
+        return ordered
+    }
+
+    private fun isLeftOperandLike(name: String): Boolean {
+        return name in digitNames ||
+                name in variableNames ||
+                name == "rbracket"
+    }
+
+    private fun isRightOperandLike(name: String): Boolean {
+        return name in digitNames ||
+                name in variableNames ||
+                name == "lbracket" ||
+                name == "sqrt" ||
+                name == "integral" ||
+                name == "sum"
+    }
+
+    private fun sameMainLine(
+        left: RecognizedSymbol,
+        current: RecognizedSymbol,
+        right: RecognizedSymbol,
+        medianHeight: Float
+    ): Boolean {
+        fun centerY(s: RecognizedSymbol): Float {
+            return (s.boundingBox.top + s.boundingBox.bottom) * 0.5f
+        }
+
+        val leftY = centerY(left)
+        val currentY = centerY(current)
+        val rightY = centerY(right)
+        val neighborY = (leftY + rightY) * 0.5f
+
+        val allowed = max(
+            0.06f,
+            medianHeight * 0.48f
+        )
+
+        return abs(currentY - neighborY) <= allowed
     }
 
     private fun renderSuperscriptDisplay(

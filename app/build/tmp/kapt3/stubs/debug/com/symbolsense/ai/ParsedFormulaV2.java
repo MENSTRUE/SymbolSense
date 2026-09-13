@@ -1,12 +1,22 @@
 package com.symbolsense.ai;
 
 /**
- * Spatial parser V2.
+ * Spatial parser V2.1.
  *
- * Adds to V1:
+ * Adds to V2:
  * - one-line baseline estimation
  * - superscript attachment, e.g. a² -> a^{2}
  * - structural '=' spacing
+ * - context-aware x <-> times disambiguation
+ * - conservative top-K operator recovery for ambiguous glyphs
+ *
+ * Important:
+ * - This does NOT globally rename x to times.
+ * - A contextual replacement is only allowed when the token is physically
+ *  between two operand-like tokens on the same baseline.
+ * - For x -> times, "times" must already exist in classifier top-K.
+ * - For other operator recovery, the operator candidate must already exist
+ *  in classifier top-K and pass conservative confidence/ratio gates.
  *
  * It deliberately does NOT pretend to solve full 2D mathematics yet.
  * Fractions, integral limits, matrices, nested radicals, etc. remain future work.
