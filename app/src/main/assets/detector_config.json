@@ -1,5 +1,5 @@
 {
-  "version": "crohme_detector_v2",
+  "version": "crohme_detector_v2_v5_4_two_stage_runtime",
   "dataset": "CROHME2019",
   "input_width": 384,
   "input_height": 256,
@@ -11,16 +11,11 @@
   "nms_iou": 0.35,
   "max_detections": 128,
   "recommended_variant": "fp16",
-  "ground_truth_contract": "one bbox = one symbol traceGroup from the same InkML sample",
-  "training_augmentation": [
-    "perspective",
-    "affine",
-    "lighting",
-    "screen_moire",
-    "blur",
-    "sensor_noise",
-    "jpeg",
-    "light_on_dark",
-    "hard_negative"
-  ]
+  "runtime_policy": {
+    "base_detector_threshold": 0.35,
+    "strong_detector_threshold": 0.6,
+    "weak_detector_candidates": "operator rescue only",
+    "normal_symbols": "strong detector gate"
+  },
+  "ground_truth_contract": "one bbox = one symbol traceGroup from the same InkML sample"
 }

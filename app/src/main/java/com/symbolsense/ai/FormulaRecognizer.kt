@@ -21,7 +21,7 @@ import kotlin.math.min
  * -> crop quality gate
  * -> StructuralTokenRecognizer (currently '=')
  * -> existing exact-32 SymbolClassifier
- * -> false-positive rejection
+ * -> two-stage detector gate (strong symbols + weak-operator rescue)
  * -> stacked-minus '=' merge fallback
  * -> SpatialParserV2 (linear + superscript + context reranking)
  *
@@ -36,10 +36,19 @@ class FormulaRecognizer(
         private const val CLASSIFIER_TOP_K = 5
         private const val CROP_PADDING_RATIO = 0.12f
 
-        private const val MIN_DETECTOR_CONFIDENCE = 0.60f
+        // Keep detector decode permissive so thin operators survive.
+        private const val BASE_DETECTOR_CONFIDENCE = 0.35f
+
+        // Ordinary symbols still need the stronger runtime gate.
+        private const val STRONG_DETECTOR_CONFIDENCE = 0.60f
+
         private const val MIN_CLASSIFIER_CONFIDENCE = 0.55f
-        private const val STRONG_CLASSIFIER_CONFIDENCE = 0.88f
         private const val MIN_COMBINED_SCORE = 0.30f
+
+        // Low-confidence detector boxes may only survive as operators.
+        private const val RESCUE_OPERATOR_MIN_CLASSIFIER = 0.55f
+        private const val RESCUE_OPERATOR_MIN_RATIO_TO_BEST = 0.50f
+        private const val RESCUE_OPERATOR_MIN_COMBINED = 0.19f
 
         private const val MAX_BOXES_TO_CLASSIFY = 96
         private const val MAX_ACCEPTED_SYMBOLS = 64
@@ -47,6 +56,18 @@ class FormulaRecognizer(
         // Temporary UI diagnostics. Keep small to avoid retaining too many Bitmaps.
         private const val DEBUG_CAPTURE_ENABLED = true
         private const val MAX_DEBUG_CROPS = 24
+
+        private val RESCUE_OPERATOR_NAMES = setOf(
+            "plus",
+            "minus",
+            "times",
+            "divide",
+            "equal",
+            "less_than",
+            "greater_than",
+            "less_equal",
+            "greater_equal"
+        )
     }
 
     private val detector = SymbolDetector(context.applicationContext)
@@ -82,75 +103,168 @@ class FormulaRecognizer(
         val recognized = ArrayList<RecognizedSymbol>()
 
         val candidateBoxes = detection.boxes
-            .filter { it.confidence >= MIN_DETECTOR_CONFIDENCE }
+            .filter { it.confidence >= BASE_DETECTOR_CONFIDENCE }
             .sortedByDescending { it.confidence }
             .take(MAX_BOXES_TO_CLASSIFY)
 
         for ((detectorIndex, box) in candidateBoxes.withIndex()) {
-            val crop = cropWithPadding(bitmap, box) ?: continue
+            val strongDetector =
+                box.confidence >= STRONG_DETECTOR_CONFIDENCE
 
-            if (!StructuralTokenRecognizer.isMeaningfulCrop(crop)) {
+            val crop = cropWithPadding(
+                bitmap = bitmap,
+                box = box
+            ) ?: continue
+
+            /*
+             * Strong boxes use the normal crop-quality gate.
+             * Weak boxes bypass that hard rejection because thin operators
+             * (<, >, -, <=, >=, ÷) can contain very little ink.
+             *
+             * Weak boxes are still tightly restricted below: they may only
+             * survive as operator candidates with classifier support.
+             */
+            val meaningfulCrop =
+                StructuralTokenRecognizer.isMeaningfulCrop(crop)
+
+            if (
+                strongDetector &&
+                !meaningfulCrop
+            ) {
                 continue
             }
 
-            // Classifier runs first. The structural '=' recognizer is only allowed
-            // to override a plausible horizontal/operator crop, so textured crops
-            // cannot all turn into '=' before the classifier gets a chance.
-            val classification = classifier.classify(crop, topK)
+            val classification =
+                classifier.classify(
+                    crop,
+                    topK
+                )
 
-            if (DEBUG_CAPTURE_ENABLED && debugCrops.size < MAX_DEBUG_CROPS) {
+            if (
+                DEBUG_CAPTURE_ENABLED &&
+                debugCrops.size < MAX_DEBUG_CROPS
+            ) {
                 debugCrops += FormulaDebugCrop(
                     detectorIndex = detectorIndex,
                     rawCrop = crop,
-                    canonicalClassifierInput = classifier.preprocessForDebug(crop),
+                    canonicalClassifierInput =
+                        classifier.preprocessForDebug(crop),
                     detectorConfidence = box.confidence,
                     classifierTopK = classification.topK,
-                    boundingBox = normalizedBox(box, bitmap),
+                    boundingBox =
+                        normalizedBox(box, bitmap),
                     rawWidth = crop.width,
                     rawHeight = crop.height
                 )
             }
 
-            var best = classification.best
-            var topPredictions = classification.topK
+            var best =
+                classification.best
 
-            val equalCandidate = StructuralTokenRecognizer.recognizeEqual(crop)
-            val allowEqualOverride = equalCandidate != null && (
-                    best.name == "minus" ||
-                            best.name == "divide" ||
-                            (crop.width.toFloat() / kotlin.math.max(1, crop.height).toFloat() >= 1.35f &&
-                                    best.confidence < 0.78f)
-                    )
+            var topPredictions =
+                classification.topK
+
+            val equalCandidate =
+                StructuralTokenRecognizer.recognizeEqual(crop)
+
+            val allowEqualOverride =
+                equalCandidate != null &&
+                        (
+                                best.name == "minus" ||
+                                        best.name == "divide" ||
+                                        (
+                                                crop.width.toFloat() /
+                                                        kotlin.math.max(
+                                                            1,
+                                                            crop.height
+                                                        ).toFloat() >= 1.35f &&
+                                                        best.confidence < 0.78f
+                                                )
+                                )
 
             if (allowEqualOverride) {
                 best = equalCandidate!!
-                topPredictions = listOf(best)
+                topPredictions =
+                    listOf(best)
             }
 
-            val combinedScore = box.confidence * best.confidence
+            /*
+             * Weak-detector operator rescue.
+             *
+             * Old V5.3 discarded detector scores < 0.60 before classification.
+             * That made thin operators impossible to recover later.
+             */
+            if (!strongDetector) {
+                val operatorCandidate =
+                    topPredictions
+                        .asSequence()
+                        .filter {
+                            it.name in RESCUE_OPERATOR_NAMES
+                        }
+                        .filter {
+                            it.confidence >=
+                                    RESCUE_OPERATOR_MIN_CLASSIFIER
+                        }
+                        .filter {
+                            it.confidence >=
+                                    classification.best.confidence *
+                                    RESCUE_OPERATOR_MIN_RATIO_TO_BEST
+                        }
+                        .maxByOrNull {
+                            it.confidence
+                        }
 
-            val classifierAccept =
-                best.confidence >= MIN_CLASSIFIER_CONFIDENCE
+                if (
+                    operatorCandidate != null &&
+                    best.name !in RESCUE_OPERATOR_NAMES
+                ) {
+                    best =
+                        operatorCandidate
+                }
+            }
+
+            val combinedScore =
+                box.confidence *
+                        best.confidence
 
             val accept =
-                classifierAccept &&
-                        combinedScore >= MIN_COMBINED_SCORE
+                if (strongDetector) {
+                    best.confidence >=
+                            MIN_CLASSIFIER_CONFIDENCE &&
+                            combinedScore >=
+                            MIN_COMBINED_SCORE
+                } else {
+                    best.name in
+                            RESCUE_OPERATOR_NAMES &&
+                            best.confidence >=
+                            RESCUE_OPERATOR_MIN_CLASSIFIER &&
+                            combinedScore >=
+                            RESCUE_OPERATOR_MIN_COMBINED
+                }
 
-            if (!accept) continue
+            if (!accept) {
+                continue
+            }
 
-            recognized += RecognizedSymbol(
-                prediction = best,
-                topK = topPredictions,
-                detectorConfidence = box.confidence,
-                boundingBox = normalizedBox(box, bitmap),
-                classifierInferenceTimeMs = classification.inferenceTimeMs,
-                reliable =
-                    (
-                            best.name == "equal" ||
-                                    best.confidence >= MIN_CLASSIFIER_CONFIDENCE
-                            ) &&
-                            box.confidence >= MIN_DETECTOR_CONFIDENCE
-            )
+            recognized +=
+                RecognizedSymbol(
+                    prediction = best,
+                    topK = topPredictions,
+                    detectorConfidence =
+                        box.confidence,
+                    boundingBox =
+                        normalizedBox(
+                            box,
+                            bitmap
+                        ),
+                    classifierInferenceTimeMs =
+                        classification.inferenceTimeMs,
+                    reliable =
+                        best.confidence >=
+                                MIN_CLASSIFIER_CONFIDENCE &&
+                                box.confidence >=
+                                BASE_DETECTOR_CONFIDENCE
+                )
         }
 
         if (DEBUG_CAPTURE_ENABLED) {

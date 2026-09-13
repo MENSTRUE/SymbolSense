@@ -5,13 +5,15 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Spatial parser V2.2 / SymbolSense V5.3.
+ * Spatial parser V2.3 / SymbolSense V5.4.
  *
  * Adds:
  * - one-line baseline estimation
  * - superscript attachment, e.g. a² -> a^{2}
  * - structural '=' spacing
  * - stable x <-> times disambiguation
+ * - divide/comparison operator recovery
+ * - weak-detector operator pruning
  * - conservative top-K operator recovery
  * - operator-spacing check to avoid blindly converting variables/digits
  *
@@ -46,6 +48,10 @@ object SpatialParserV2 {
     private const val GENERIC_OPERATOR_MIN_TOPK_CONFIDENCE = 0.10f
     private const val GENERIC_OPERATOR_MIN_RATIO_TO_BEST = 0.12f
 
+    private const val WEAK_DETECTOR_THRESHOLD = 0.60f
+    private const val WEAK_OPERATOR_KEEP_IF_CLASSIFIER = 0.85f
+    private const val X_ALTERNATE_OPERATOR_MIN_CONFIDENCE = 0.10f
+
     private val operatorNames = setOf(
         "plus",
         "minus",
@@ -62,7 +68,11 @@ object SpatialParserV2 {
         "plus",
         "minus",
         "times",
-        "divide"
+        "divide",
+        "less_than",
+        "greater_than",
+        "less_equal",
+        "greater_equal"
     )
 
     private val invalidSuperscriptBases = setOf(
@@ -139,9 +149,19 @@ object SpatialParserV2 {
             )
         }
 
+        /*
+         * Low detector threshold (0.35) is used only to keep thin operators
+         * alive. Remove weak operator hallucinations that are not placed
+         * structurally between operands.
+         */
+        val structurallyFilteredSymbols =
+            pruneWeakDetectorOperators(symbols)
+
         // Resolve ambiguous linear operators before superscript analysis.
         val contextualSymbols =
-            rerankLinearContext(symbols)
+            rerankLinearContext(
+                structurallyFilteredSymbols
+            )
 
         val positioned = contextualSymbols.map { s ->
             val b = s.boundingBox
@@ -439,6 +459,89 @@ object SpatialParserV2 {
      *
      * No global label replacement is performed.
      */
+    /**
+     * A detector score in [0.35, 0.60) is rescue-only.
+     *
+     * Keep a weak operator if:
+     * - classifier confidence is exceptionally strong, OR
+     * - it is between operand-like neighbors on the same line.
+     *
+     * This prevents the old background false positives from returning.
+     */
+    private fun pruneWeakDetectorOperators(
+        symbols: List<RecognizedSymbol>
+    ): List<RecognizedSymbol> {
+
+        if (symbols.size < 2) {
+            return symbols
+        }
+
+        val ordered =
+            symbols.sortedBy {
+                it.boundingBox.left
+            }
+
+        val heights =
+            ordered
+                .map {
+                    (
+                            it.boundingBox.bottom -
+                                    it.boundingBox.top
+                            )
+                        .coerceAtLeast(
+                            0.001f
+                        )
+                }
+                .sorted()
+
+        val medianHeight =
+            median(heights)
+                .coerceAtLeast(
+                    0.02f
+                )
+
+        return ordered.filterIndexed {
+                index,
+                current ->
+
+            if (
+                current.detectorConfidence >=
+                WEAK_DETECTOR_THRESHOLD ||
+                current.prediction.name !in
+                operatorNames ||
+                current.prediction.confidence >=
+                WEAK_OPERATOR_KEEP_IF_CLASSIFIER
+            ) {
+                true
+            } else if (
+                index <= 0 ||
+                index >= ordered.lastIndex
+            ) {
+                false
+            } else {
+                val left =
+                    ordered[index - 1]
+
+                val right =
+                    ordered[index + 1]
+
+                isLeftOperandLike(
+                    left.prediction.name
+                ) &&
+                        isRightOperandLike(
+                            right.prediction.name
+                        ) &&
+                        sameMainLine(
+                            left = left,
+                            current = current,
+                            right = right,
+                            medianHeight =
+                                medianHeight
+                        )
+            }
+        }
+    }
+
     private fun rerankLinearContext(
         symbols: List<RecognizedSymbol>
     ): List<RecognizedSymbol> {
@@ -560,6 +663,29 @@ object SpatialParserV2 {
                 "x"
             ) {
 
+                /*
+                 * A real ÷, <, >, <=, >= can sometimes be classified as x.
+                 * Prefer an explicit operator already present in top-K before
+                 * using the multiplication spacing fallback.
+                 */
+                val explicitAlternateOperator =
+                    current.topK
+                        .asSequence()
+                        .filter {
+                            it.name in
+                                    contextualOperatorNames
+                        }
+                        .filter {
+                            it.name != "times"
+                        }
+                        .filter {
+                            it.confidence >=
+                                    X_ALTERNATE_OPERATOR_MIN_CONFIDENCE
+                        }
+                        .maxByOrNull {
+                            it.confidence
+                        }
+
                 val timesCandidate =
                     current.topK
                         .firstOrNull {
@@ -569,14 +695,22 @@ object SpatialParserV2 {
                                     X_TIMES_MIN_TOPK_CONFIDENCE
                         }
 
-                if (
-                    timesCandidate != null
-                ) {
+                val preferredCandidate =
+                    listOfNotNull(
+                        explicitAlternateOperator,
+                        timesCandidate
+                    )
+                        .maxByOrNull {
+                            it.confidence
+                        }
 
+                if (
+                    preferredCandidate != null
+                ) {
                     ordered[index] =
                         current.copy(
                             prediction =
-                                timesCandidate
+                                preferredCandidate
                         )
 
                     continue
@@ -585,7 +719,6 @@ object SpatialParserV2 {
                 if (
                     hasSpacing
                 ) {
-
                     val contextualTimes =
                         SymbolPrediction(
                             id = 12,

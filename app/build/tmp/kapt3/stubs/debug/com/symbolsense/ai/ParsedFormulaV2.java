@@ -1,13 +1,15 @@
 package com.symbolsense.ai;
 
 /**
- * Spatial parser V2.2 / SymbolSense V5.3.
+ * Spatial parser V2.3 / SymbolSense V5.4.
  *
  * Adds:
  * - one-line baseline estimation
  * - superscript attachment, e.g. a² -> a^{2}
  * - structural '=' spacing
  * - stable x <-> times disambiguation
+ * - divide/comparison operator recovery
+ * - weak-detector operator pruning
  * - conservative top-K operator recovery
  * - operator-spacing check to avoid blindly converting variables/digits
  *
