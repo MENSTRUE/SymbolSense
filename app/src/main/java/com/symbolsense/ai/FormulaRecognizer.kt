@@ -19,7 +19,7 @@ import kotlin.math.min
  * image
  * -> robust class-agnostic detector
  * -> crop quality gate
- * -> StructuralTokenRecognizer (currently '=')
+ * -> StructuralTokenRecognizer ('=' + '÷')
  * -> existing exact-32 SymbolClassifier
  * -> two-stage detector gate (strong symbols + weak-operator rescue)
  * -> stacked-minus '=' merge fallback
@@ -164,28 +164,81 @@ class FormulaRecognizer(
             var topPredictions =
                 classification.topK
 
-            val equalCandidate =
-                StructuralTokenRecognizer.recognizeEqual(crop)
+            /*
+             * Structural divide recovery.
+             *
+             * A camera-rendered ÷ can lose its two dots in classifier
+             * preprocessing and collapse into a very confident "minus".
+             *
+             * We do NOT globally map minus -> divide.
+             * StructuralTokenRecognizer must independently verify:
+             *     dot + horizontal bar + dot
+             */
+            val divideCandidate =
+                StructuralTokenRecognizer.recognizeDivide(crop)
 
-            val allowEqualOverride =
-                equalCandidate != null &&
+            val allowDivideOverride =
+                divideCandidate != null &&
                         (
                                 best.name == "minus" ||
                                         best.name == "divide" ||
-                                        (
-                                                crop.width.toFloat() /
-                                                        kotlin.math.max(
-                                                            1,
-                                                            crop.height
-                                                        ).toFloat() >= 1.35f &&
-                                                        best.confidence < 0.78f
-                                                )
+                                        best.name == "times" ||
+                                        best.name == "x"
                                 )
 
-            if (allowEqualOverride) {
-                best = equalCandidate!!
+            var structuralDivideApplied =
+                false
+
+            if (allowDivideOverride) {
+                val divide =
+                    divideCandidate!!
+
+                best =
+                    divide
+
                 topPredictions =
-                    listOf(best)
+                    (
+                            listOf(divide) +
+                                    topPredictions.filter {
+                                        it.name != "divide"
+                                    }
+                            )
+                        .take(topK)
+
+                structuralDivideApplied =
+                    true
+            }
+
+            /*
+             * Existing '=' structural recognition remains active.
+             * Do not let '=' overwrite an already verified ÷.
+             */
+            if (!structuralDivideApplied) {
+                val equalCandidate =
+                    StructuralTokenRecognizer.recognizeEqual(crop)
+
+                val allowEqualOverride =
+                    equalCandidate != null &&
+                            (
+                                    best.name == "minus" ||
+                                            best.name == "divide" ||
+                                            (
+                                                    crop.width.toFloat() /
+                                                            kotlin.math.max(
+                                                                1,
+                                                                crop.height
+                                                            ).toFloat() >= 1.35f &&
+                                                            best.confidence < 0.78f
+                                                    )
+                                    )
+
+                if (allowEqualOverride) {
+                    best =
+                        equalCandidate!!
+
+                    topPredictions =
+                        listOf(best)
+                }
             }
 
             /*

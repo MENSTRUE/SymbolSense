@@ -15,7 +15,7 @@ import java.io.Closeable;
  * image
  * -> robust class-agnostic detector
  * -> crop quality gate
- * -> StructuralTokenRecognizer (currently '=')
+ * -> StructuralTokenRecognizer ('=' + '÷')
  * -> existing exact-32 SymbolClassifier
  * -> two-stage detector gate (strong symbols + weak-operator rescue)
  * -> stacked-minus '=' merge fallback

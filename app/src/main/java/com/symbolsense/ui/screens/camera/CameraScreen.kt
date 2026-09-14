@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -87,10 +88,48 @@ fun CameraScreen(
     val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
     val scope = rememberCoroutineScope()
 
+    /*
+     * Camera framing guide.
+     *
+     * Ditampilkan otomatis hanya sekali saat user pertama kali masuk kamera.
+     * Setelah itu user tetap bisa membukanya lagi lewat tombol info (?) di atas.
+     *
+     * Ini bukan aturan "kamera harus jauh".
+     * Tujuannya memastikan seluruh rumus masuk frame dengan margin yang cukup,
+     * karena detector lebih stabil ketika simbol tidak terlalu memenuhi layar.
+     */
+    val framingGuidePrefs = remember(context) {
+        context.getSharedPreferences(
+            "symbolsense_camera_guide",
+            Context.MODE_PRIVATE
+        )
+    }
+
+    var showFramingGuide by remember {
+        mutableStateOf(
+            !framingGuidePrefs.getBoolean(
+                "framing_guide_seen",
+                false
+            )
+        )
+    }
+
+    fun dismissFramingGuide() {
+        framingGuidePrefs
+            .edit()
+            .putBoolean(
+                "framing_guide_seen",
+                true
+            )
+            .apply()
+
+        showFramingGuide = false
+    }
+
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED
+                    PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -200,17 +239,52 @@ fun CameraScreen(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             DarkCircleButton(onClick = onClose) {
-                Icon(Icons.Filled.Close, "Tutup", tint = Color.White)
-            }
-            DarkCircleButton(onClick = { flashOn = !flashOn }) {
                 Icon(
-                    if (flashOn) Icons.Filled.FlashOn else Icons.Filled.FlashOff,
-                    "Flash",
-                    tint = if (flashOn) Color(0xFFFACC15) else Color.White
+                    Icons.Filled.Close,
+                    "Tutup",
+                    tint = Color.White
                 )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DarkCircleButton(
+                    onClick = {
+                        showFramingGuide = true
+                    }
+                ) {
+                    Icon(
+                        Icons.Filled.Info,
+                        "Panduan pemindaian",
+                        tint = Color.White
+                    )
+                }
+
+                DarkCircleButton(
+                    onClick = {
+                        flashOn = !flashOn
+                    }
+                ) {
+                    Icon(
+                        if (flashOn) {
+                            Icons.Filled.FlashOn
+                        } else {
+                            Icons.Filled.FlashOff
+                        },
+                        "Flash",
+                        tint = if (flashOn) {
+                            Color(0xFFFACC15)
+                        } else {
+                            Color.White
+                        }
+                    )
+                }
             }
         }
 
@@ -220,13 +294,57 @@ fun CameraScreen(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            ScannerFrame(Modifier.fillMaxWidth(0.72f).aspectRatio(1.2f))
-            Spacer(Modifier.height(14.dp))
-            Text(
-                if (cameraReady) "Posisikan simbol dalam bingkai" else "Menyiapkan kamera...",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.68f)
+            /*
+             * Frame dibuat lebih lebar daripada versi awal karena target utama
+             * sekarang adalah formula multi-symbol, bukan hanya satu simbol.
+             *
+             * User tidak harus "memotret dari jauh"; yang penting seluruh rumus
+             * masuk di area ini dan masih punya sedikit ruang di kiri-kanan.
+             */
+            ScannerFrame(
+                modifier = Modifier
+                    .fillMaxWidth(0.86f)
+                    .aspectRatio(2.15f)
             )
+
+            Spacer(
+                Modifier.height(14.dp)
+            )
+
+            Text(
+                if (cameraReady) {
+                    "Pastikan seluruh rumus masuk bingkai"
+                } else {
+                    "Menyiapkan kamera..."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.82f)
+            )
+
+            if (cameraReady) {
+                Spacer(
+                    Modifier.height(6.dp)
+                )
+
+                Surface(
+                    color = Color.Black.copy(alpha = 0.48f),
+                    shape = MaterialTheme.shapes.large,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Color.White.copy(alpha = 0.10f)
+                    )
+                ) {
+                    Text(
+                        "Beri sedikit jarak • hindari memenuhi seluruh layar",
+                        modifier = Modifier.padding(
+                            horizontal = 12.dp,
+                            vertical = 7.dp
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.72f)
+                    )
+                }
+            }
         }
 
         AnimatedVisibility(
@@ -374,6 +492,264 @@ fun CameraScreen(
                 )
             }
         }
+
+        /*
+         * First-time framing guide / coachmark.
+         *
+         * Tidak muncul setiap kali scan. Setelah "Mengerti", preferensi disimpan.
+         * Tombol info di bagian atas bisa membuka panduan ini lagi kapan saja.
+         */
+        if (showFramingGuide) {
+            CameraFramingGuide(
+                onDismiss = {
+                    dismissFramingGuide()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CameraFramingGuide(
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Color.Black.copy(
+                    alpha = 0.64f
+                )
+            )
+            .padding(
+                horizontal = 24.dp
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            color = Color(0xF21B1919),
+            shape = MaterialTheme.shapes.extraLarge,
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                Color.White.copy(
+                    alpha = 0.12f
+                )
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = 20.dp,
+                    vertical = 20.dp
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = CyanAccent.copy(
+                            alpha = 0.14f
+                        ),
+                        modifier = Modifier.size(
+                            42.dp
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.PhotoCamera,
+                                contentDescription = null,
+                                tint = CyanAccent,
+                                modifier = Modifier.size(
+                                    21.dp
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(
+                        Modifier.size(
+                            12.dp
+                        )
+                    )
+
+                    Column {
+                        Text(
+                            "Posisikan rumus dengan benar",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
+                        )
+
+                        Text(
+                            "Tidak perlu terlalu dekat dengan tulisan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(
+                                alpha = 0.62f
+                            )
+                        )
+                    }
+                }
+
+                Spacer(
+                    Modifier.height(
+                        18.dp
+                    )
+                )
+
+                /*
+                 * Visual mini-frame so the instruction is immediately obvious.
+                 */
+                Surface(
+                    color = Color.Black.copy(
+                        alpha = 0.34f
+                    ),
+                    shape = MaterialTheme.shapes.medium,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        CyanAccent.copy(
+                            alpha = 0.48f
+                        )
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(
+                            2.5f
+                        )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(
+                                horizontal = 22.dp,
+                                vertical = 12.dp
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "a + b ÷ 2",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                Spacer(
+                    Modifier.height(
+                        16.dp
+                    )
+                )
+
+                FramingGuideRow(
+                    text = "Pastikan seluruh rumus terlihat."
+                )
+
+                Spacer(
+                    Modifier.height(
+                        8.dp
+                    )
+                )
+
+                FramingGuideRow(
+                    text = "Sisakan sedikit ruang di kiri, kanan, atas, dan bawah."
+                )
+
+                Spacer(
+                    Modifier.height(
+                        8.dp
+                    )
+                )
+
+                FramingGuideRow(
+                    text = "Hindari zoom terlalu dekat hingga simbol memenuhi layar."
+                )
+
+                Spacer(
+                    Modifier.height(
+                        8.dp
+                    )
+                )
+
+                FramingGuideRow(
+                    text = "Usahakan kamera sejajar dan gambar tidak miring."
+                )
+
+                Spacer(
+                    Modifier.height(
+                        20.dp
+                    )
+                )
+
+                Surface(
+                    onClick = onDismiss,
+                    shape = MaterialTheme.shapes.medium,
+                    color = CyanAccent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(
+                            48.dp
+                        )
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(
+                                18.dp
+                            )
+                        )
+
+                        Spacer(
+                            Modifier.size(
+                                8.dp
+                            )
+                        )
+
+                        Text(
+                            "Mengerti",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FramingGuideRow(
+    text: String
+) {
+    Row(
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            "✓",
+            style = MaterialTheme.typography.bodyMedium,
+            color = CyanAccent
+        )
+
+        Spacer(
+            Modifier.size(
+                10.dp
+            )
+        )
+
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(
+                alpha = 0.82f
+            )
+        )
     }
 }
 
