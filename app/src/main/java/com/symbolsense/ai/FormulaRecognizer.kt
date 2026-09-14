@@ -14,10 +14,11 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * FormulaRecognition V4 pipeline (CROHME Detector V2):
+ * FormulaRecognition V5.6 pipeline (CROHME Detector V2):
  *
  * image
  * -> robust class-agnostic detector
+ * -> scan quality guard + optional ROI auto-recovery
  * -> crop quality gate
  * -> StructuralTokenRecognizer ('=' + '÷')
  * -> existing exact-32 SymbolClassifier
@@ -73,6 +74,15 @@ class FormulaRecognizer(
     private val detector = SymbolDetector(context.applicationContext)
     private val classifier = SymbolClassifier(context.applicationContext)
 
+    private data class WorkingImage(
+        val bitmap: Bitmap,
+        val offsetX: Int,
+        val offsetY: Int,
+        val originalWidth: Int,
+        val originalHeight: Int,
+        val autoRecovered: Boolean
+    )
+
     @Synchronized
     fun recognize(
         bitmap: Bitmap,
@@ -88,19 +98,176 @@ class FormulaRecognizer(
             FormulaDebugStore.clear()
         }
 
-        val debugCrops = ArrayList<FormulaDebugCrop>()
-        val detection = detector.detect(bitmap)
+        val debugCrops =
+            ArrayList<FormulaDebugCrop>()
 
-        if (detection.boxes.isEmpty()) {
-            return fallbackToWholeCrop(
+        /*
+         * =====================================================
+         * V5.6 SCAN QUALITY + AUTO RECOVERY
+         * =====================================================
+         *
+         * Run detector once on the user's crop.
+         * If the formula is too small / weak, crop the detected formula ROI
+         * and run the detector ONE more time. Detector's fixed resize then
+         * effectively gives the formula more pixels without digital camera zoom.
+         */
+        val initialDetection =
+            detector.detect(
+                bitmap
+            )
+
+        val initialQuality =
+            ScanQualityEvaluator.evaluate(
+                imageWidth =
+                    bitmap.width,
+                imageHeight =
+                    bitmap.height,
+                boxes =
+                    initialDetection
+                        .boxes
+                        .map {
+                            it.toScanQualityBox()
+                        }
+            )
+
+        var working =
+            WorkingImage(
                 bitmap = bitmap,
-                detectorTimeMs = detection.inferenceTimeMs,
-                startNs = startNs,
-                topK = topK
+                offsetX = 0,
+                offsetY = 0,
+                originalWidth =
+                    bitmap.width,
+                originalHeight =
+                    bitmap.height,
+                autoRecovered =
+                    false
+            )
+
+        var detection =
+            initialDetection
+
+        var detectorTimeMs =
+            initialDetection
+                .inferenceTimeMs
+
+        if (
+            initialQuality.canAutoRecover &&
+            initialDetection.boxes.isNotEmpty()
+        ) {
+            val recoveryRegion =
+                ScanQualityEvaluator
+                    .buildRecoveryRegion(
+                        bitmap = bitmap,
+                        boxes =
+                            initialDetection
+                                .boxes
+                                .map {
+                                    it.toScanQualityBox()
+                                }
+                    )
+
+            if (
+                recoveryRegion != null
+            ) {
+                val recoveredBitmap =
+                    ScanQualityEvaluator
+                        .crop(
+                            bitmap = bitmap,
+                            region =
+                                recoveryRegion
+                        )
+
+                val retryDetection =
+                    detector.detect(
+                        recoveredBitmap
+                    )
+
+                detectorTimeMs +=
+                    retryDetection
+                        .inferenceTimeMs
+
+                val retryQuality =
+                    ScanQualityEvaluator
+                        .evaluate(
+                            imageWidth =
+                                recoveredBitmap.width,
+                            imageHeight =
+                                recoveredBitmap.height,
+                            boxes =
+                                retryDetection
+                                    .boxes
+                                    .map {
+                                        it.toScanQualityBox()
+                                    }
+                        )
+
+                if (
+                    shouldUseRecoveredDetection(
+                        initialQuality =
+                            initialQuality,
+                        retryQuality =
+                            retryQuality
+                    )
+                ) {
+                    working =
+                        WorkingImage(
+                            bitmap =
+                                recoveredBitmap,
+                            offsetX =
+                                recoveryRegion.left,
+                            offsetY =
+                                recoveryRegion.top,
+                            originalWidth =
+                                bitmap.width,
+                            originalHeight =
+                                bitmap.height,
+                            autoRecovered =
+                                true
+                        )
+
+                    detection =
+                        retryDetection
+                }
+            }
+        }
+
+        /*
+         * Detector kosong:
+         * - masih beri kesempatan isolated symbol yang sangat kuat;
+         * - kalau tidak, jangan mengarang hasil formula dari whole-image crop.
+         */
+        if (
+            detection.boxes.isEmpty()
+        ) {
+            return isolatedFallbackOrThrow(
+                bitmap = bitmap,
+                detectorTimeMs =
+                    detectorTimeMs,
+                startNs =
+                    startNs,
+                topK =
+                    topK,
+                quality =
+                    initialQuality
             )
         }
 
-        val recognized = ArrayList<RecognizedSymbol>()
+        val activeQuality =
+            ScanQualityEvaluator.evaluate(
+                imageWidth =
+                    working.bitmap.width,
+                imageHeight =
+                    working.bitmap.height,
+                boxes =
+                    detection
+                        .boxes
+                        .map {
+                            it.toScanQualityBox()
+                        }
+            )
+
+        val recognized =
+            ArrayList<RecognizedSymbol>()
 
         val candidateBoxes = detection.boxes
             .filter { it.confidence >= BASE_DETECTOR_CONFIDENCE }
@@ -112,8 +279,10 @@ class FormulaRecognizer(
                 box.confidence >= STRONG_DETECTOR_CONFIDENCE
 
             val crop = cropWithPadding(
-                bitmap = bitmap,
-                box = box
+                bitmap =
+                    working.bitmap,
+                box =
+                    box
             ) ?: continue
 
             /*
@@ -152,7 +321,7 @@ class FormulaRecognizer(
                     detectorConfidence = box.confidence,
                     classifierTopK = classification.topK,
                     boundingBox =
-                        normalizedBox(box, bitmap),
+                        normalizedBox(box, working),
                     rawWidth = crop.width,
                     rawHeight = crop.height
                 )
@@ -179,12 +348,12 @@ class FormulaRecognizer(
 
             val allowDivideOverride =
                 divideCandidate != null &&
-                        (
-                                best.name == "minus" ||
-                                        best.name == "divide" ||
-                                        best.name == "times" ||
-                                        best.name == "x"
-                                )
+                    (
+                        best.name == "minus" ||
+                            best.name == "divide" ||
+                            best.name == "times" ||
+                            best.name == "x"
+                        )
 
             var structuralDivideApplied =
                 false
@@ -198,11 +367,11 @@ class FormulaRecognizer(
 
                 topPredictions =
                     (
-                            listOf(divide) +
-                                    topPredictions.filter {
-                                        it.name != "divide"
-                                    }
-                            )
+                        listOf(divide) +
+                            topPredictions.filter {
+                                it.name != "divide"
+                            }
+                        )
                         .take(topK)
 
                 structuralDivideApplied =
@@ -219,18 +388,18 @@ class FormulaRecognizer(
 
                 val allowEqualOverride =
                     equalCandidate != null &&
-                            (
-                                    best.name == "minus" ||
-                                            best.name == "divide" ||
-                                            (
-                                                    crop.width.toFloat() /
-                                                            kotlin.math.max(
-                                                                1,
-                                                                crop.height
-                                                            ).toFloat() >= 1.35f &&
-                                                            best.confidence < 0.78f
-                                                    )
+                        (
+                            best.name == "minus" ||
+                                best.name == "divide" ||
+                                (
+                                    crop.width.toFloat() /
+                                        kotlin.math.max(
+                                            1,
+                                            crop.height
+                                        ).toFloat() >= 1.35f &&
+                                        best.confidence < 0.78f
                                     )
+                            )
 
                 if (allowEqualOverride) {
                     best =
@@ -256,12 +425,12 @@ class FormulaRecognizer(
                         }
                         .filter {
                             it.confidence >=
-                                    RESCUE_OPERATOR_MIN_CLASSIFIER
+                                RESCUE_OPERATOR_MIN_CLASSIFIER
                         }
                         .filter {
                             it.confidence >=
-                                    classification.best.confidence *
-                                    RESCUE_OPERATOR_MIN_RATIO_TO_BEST
+                                classification.best.confidence *
+                                RESCUE_OPERATOR_MIN_RATIO_TO_BEST
                         }
                         .maxByOrNull {
                             it.confidence
@@ -278,21 +447,21 @@ class FormulaRecognizer(
 
             val combinedScore =
                 box.confidence *
-                        best.confidence
+                    best.confidence
 
             val accept =
                 if (strongDetector) {
                     best.confidence >=
-                            MIN_CLASSIFIER_CONFIDENCE &&
-                            combinedScore >=
-                            MIN_COMBINED_SCORE
+                        MIN_CLASSIFIER_CONFIDENCE &&
+                        combinedScore >=
+                        MIN_COMBINED_SCORE
                 } else {
                     best.name in
-                            RESCUE_OPERATOR_NAMES &&
-                            best.confidence >=
-                            RESCUE_OPERATOR_MIN_CLASSIFIER &&
-                            combinedScore >=
-                            RESCUE_OPERATOR_MIN_COMBINED
+                        RESCUE_OPERATOR_NAMES &&
+                        best.confidence >=
+                        RESCUE_OPERATOR_MIN_CLASSIFIER &&
+                        combinedScore >=
+                        RESCUE_OPERATOR_MIN_COMBINED
                 }
 
             if (!accept) {
@@ -307,16 +476,18 @@ class FormulaRecognizer(
                         box.confidence,
                     boundingBox =
                         normalizedBox(
-                            box,
-                            bitmap
+                            box =
+                                box,
+                            working =
+                                working
                         ),
                     classifierInferenceTimeMs =
                         classification.inferenceTimeMs,
                     reliable =
                         best.confidence >=
-                                MIN_CLASSIFIER_CONFIDENCE &&
-                                box.confidence >=
-                                BASE_DETECTOR_CONFIDENCE
+                            MIN_CLASSIFIER_CONFIDENCE &&
+                            box.confidence >=
+                            BASE_DETECTOR_CONFIDENCE
                 )
         }
 
@@ -324,12 +495,14 @@ class FormulaRecognizer(
             FormulaDebugStore.publish(debugCrops)
         }
 
-        if (recognized.isEmpty()) {
-            return fallbackToWholeCrop(
-                bitmap = bitmap,
-                detectorTimeMs = detection.inferenceTimeMs,
-                startNs = startNs,
-                topK = topK
+        if (
+            recognized.isEmpty()
+        ) {
+            throw ScanQualityException(
+                ScanQualityEvaluator
+                    .lowRecognitionReport(
+                        activeQuality
+                    )
             )
         }
 
@@ -339,12 +512,14 @@ class FormulaRecognizer(
             .sortedByDescending { it.detectorConfidence * it.prediction.confidence }
             .take(MAX_ACCEPTED_SYMBOLS)
 
-        if (finalSymbols.isEmpty()) {
-            return fallbackToWholeCrop(
-                bitmap = bitmap,
-                detectorTimeMs = detection.inferenceTimeMs,
-                startNs = startNs,
-                topK = topK
+        if (
+            finalSymbols.isEmpty()
+        ) {
+            throw ScanQualityException(
+                ScanQualityEvaluator
+                    .lowRecognitionReport(
+                        activeQuality
+                    )
             )
         }
 
@@ -352,19 +527,47 @@ class FormulaRecognizer(
         val ordered = parsed.orderedSymbols
         val first = ordered.firstOrNull() ?: finalSymbols.first()
 
-        val endNs = SystemClock.elapsedRealtimeNanos()
+        /*
+         * Jangan blok scan yang berhasil hanya karena framing tidak ideal.
+         *
+         * TOO_CLOSE / CUT_OFF baru menjadi error ketika hasil yang tersisa
+         * sangat lemah (<= 1 simbol dan tidak reliable).
+         */
+        val resultReliable =
+            ordered.isNotEmpty() &&
+                ordered.all {
+                    it.reliable
+                }
+
+        val severeFramingIssue =
+            activeQuality.issue ==
+                ScanQualityIssue.TOO_CLOSE ||
+                activeQuality.issue ==
+                ScanQualityIssue.CUT_OFF
+
+        if (
+            severeFramingIssue &&
+            ordered.size <= 1 &&
+            !resultReliable
+        ) {
+            throw ScanQualityException(
+                activeQuality
+            )
+        }
+
+        val endNs =
+            SystemClock.elapsedRealtimeNanos()
 
         return SymbolRecognitionResult(
             best = first.prediction,
             topK = first.topK,
             inferenceTimeMs = (endNs - startNs) / 1_000_000.0,
             reliable =
-                ordered.isNotEmpty() &&
-                        ordered.all { it.reliable },
+                resultReliable,
             symbols = ordered,
             structuredDisplay = parsed.display,
             structuredLatex = parsed.latex,
-            detectorInferenceTimeMs = detection.inferenceTimeMs,
+            detectorInferenceTimeMs = detectorTimeMs,
             mode = RecognitionMode.MULTI_SYMBOL
         )
     }
@@ -381,13 +584,221 @@ class FormulaRecognizer(
 
     private fun normalizedBox(
         box: DetectorBox,
-        bitmap: Bitmap
+        working: WorkingImage
     ): RecognitionBoundingBox {
+
+        val left =
+            working.offsetX +
+                box.leftPx
+
+        val top =
+            working.offsetY +
+                box.topPx
+
+        val right =
+            working.offsetX +
+                box.rightPx
+
+        val bottom =
+            working.offsetY +
+                box.bottomPx
+
         return RecognitionBoundingBox(
-            left = (box.leftPx / bitmap.width).coerceIn(0f, 1f),
-            top = (box.topPx / bitmap.height).coerceIn(0f, 1f),
-            right = (box.rightPx / bitmap.width).coerceIn(0f, 1f),
-            bottom = (box.bottomPx / bitmap.height).coerceIn(0f, 1f)
+            left =
+                (
+                    left /
+                        working.originalWidth
+                    )
+                    .coerceIn(
+                        0f,
+                        1f
+                    ),
+            top =
+                (
+                    top /
+                        working.originalHeight
+                    )
+                    .coerceIn(
+                        0f,
+                        1f
+                    ),
+            right =
+                (
+                    right /
+                        working.originalWidth
+                    )
+                    .coerceIn(
+                        0f,
+                        1f
+                    ),
+            bottom =
+                (
+                    bottom /
+                        working.originalHeight
+                    )
+                    .coerceIn(
+                        0f,
+                        1f
+                    )
+        )
+    }
+
+    private fun DetectorBox.toScanQualityBox(): ScanQualityBox {
+        return ScanQualityBox(
+            left = leftPx,
+            top = topPx,
+            right = rightPx,
+            bottom = bottomPx,
+            confidence = confidence
+        )
+    }
+
+    /**
+     * Retry ROI dipakai jika kualitasnya jelas membaik atau setidaknya
+     * mempertahankan jumlah simbol sambil menaikkan kualitas detector.
+     */
+    private fun shouldUseRecoveredDetection(
+        initialQuality: ScanQualityReport,
+        retryQuality: ScanQualityReport
+    ): Boolean {
+
+        if (
+            retryQuality.boxCount <= 0
+        ) {
+            return false
+        }
+
+        if (
+            retryQuality.issue ==
+                ScanQualityIssue.GOOD &&
+            initialQuality.issue !=
+                ScanQualityIssue.GOOD
+        ) {
+            return true
+        }
+
+        if (
+            retryQuality.boxCount >
+            initialQuality.boxCount
+        ) {
+            return true
+        }
+
+        return (
+            retryQuality.boxCount >=
+                initialQuality.boxCount &&
+                retryQuality
+                    .meanDetectorConfidence >=
+                initialQuality
+                    .meanDetectorConfidence -
+                    0.05f
+            )
+    }
+
+    /**
+     * Preserve isolated-symbol use cases, but require a very strong result.
+     * Formula images are not silently collapsed into one arbitrary class.
+     */
+    private fun isolatedFallbackOrThrow(
+        bitmap: Bitmap,
+        detectorTimeMs: Double,
+        startNs: Long,
+        topK: Int,
+        quality: ScanQualityReport
+    ): SymbolRecognitionResult {
+
+        if (
+            !StructuralTokenRecognizer
+                .isMeaningfulCrop(
+                    bitmap
+                )
+        ) {
+            throw ScanQualityException(
+                ScanQualityEvaluator
+                    .noSymbolsReport()
+            )
+        }
+
+        val aspect =
+            bitmap.width.toFloat() /
+                max(
+                    1,
+                    bitmap.height
+                ).toFloat()
+
+        val single =
+            classifier.classify(
+                bitmap,
+                topK
+            )
+
+        val likelyIsolatedSymbol =
+            aspect in
+                0.42f..2.40f &&
+                single.best.confidence >=
+                0.90f
+
+        if (
+            !likelyIsolatedSymbol
+        ) {
+            throw ScanQualityException(
+                if (
+                    quality.issue ==
+                    ScanQualityIssue.GOOD
+                ) {
+                    ScanQualityEvaluator
+                        .lowRecognitionReport(
+                            quality
+                        )
+                } else {
+                    quality
+                }
+            )
+        }
+
+        val endNs =
+            SystemClock.elapsedRealtimeNanos()
+
+        val instance =
+            RecognizedSymbol(
+                prediction =
+                    single.best,
+                topK =
+                    single.topK,
+                detectorConfidence =
+                    0f,
+                boundingBox =
+                    RecognitionBoundingBox(
+                        left = 0f,
+                        top = 0f,
+                        right = 1f,
+                        bottom = 1f
+                    ),
+                classifierInferenceTimeMs =
+                    single.inferenceTimeMs,
+                reliable =
+                    single.reliable
+            )
+
+        return single.copy(
+            inferenceTimeMs =
+                (
+                    endNs -
+                        startNs
+                    ) /
+                    1_000_000.0,
+            symbols =
+                listOf(
+                    instance
+                ),
+            structuredDisplay =
+                single.best.display,
+            structuredLatex =
+                single.best.latex,
+            detectorInferenceTimeMs =
+                detectorTimeMs,
+            mode =
+                RecognitionMode.DETECTOR_FALLBACK
         )
     }
 
@@ -452,7 +863,7 @@ class FormulaRecognizer(
                 val overlap = max(
                     0f,
                     min(a.boundingBox.right, b.boundingBox.right) -
-                            max(a.boundingBox.left, b.boundingBox.left)
+                        max(a.boundingBox.left, b.boundingBox.left)
                 )
                 val overlapRatio = overlap / max(minW, 1e-6f)
                 if (overlapRatio < 0.65f) continue
@@ -489,8 +900,8 @@ class FormulaRecognizer(
                 display = "=",
                 latex = "=",
                 confidence = (
-                        (a.prediction.confidence + b.prediction.confidence) * 0.5f
-                        ).coerceIn(0f, 0.97f)
+                    (a.prediction.confidence + b.prediction.confidence) * 0.5f
+                    ).coerceIn(0f, 0.97f)
             )
 
             out += RecognizedSymbol(
@@ -530,39 +941,6 @@ class FormulaRecognizer(
         val union = areaA + areaB - intersection
 
         return if (union <= 0f) 0f else intersection / union
-    }
-
-    private fun fallbackToWholeCrop(
-        bitmap: Bitmap,
-        detectorTimeMs: Double,
-        startNs: Long,
-        topK: Int
-    ): SymbolRecognitionResult {
-        val single = classifier.classify(bitmap, topK)
-        val endNs = SystemClock.elapsedRealtimeNanos()
-
-        val instance = RecognizedSymbol(
-            prediction = single.best,
-            topK = single.topK,
-            detectorConfidence = 0f,
-            boundingBox = RecognitionBoundingBox(
-                left = 0f,
-                top = 0f,
-                right = 1f,
-                bottom = 1f
-            ),
-            classifierInferenceTimeMs = single.inferenceTimeMs,
-            reliable = single.reliable
-        )
-
-        return single.copy(
-            inferenceTimeMs = (endNs - startNs) / 1_000_000.0,
-            symbols = listOf(instance),
-            structuredDisplay = single.best.display,
-            structuredLatex = single.best.latex,
-            detectorInferenceTimeMs = detectorTimeMs,
-            mode = RecognitionMode.DETECTOR_FALLBACK
-        )
     }
 
     private fun cropWithPadding(

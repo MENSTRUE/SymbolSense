@@ -13,71 +13,132 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "SymbolSenseAI"
 
+/**
+ * V5.6 AI entry point.
+ *
+ * ProcessingScreen tidak memanggil classifier isolated langsung.
+ * Semua scan masuk melalui FormulaRecognizer agar:
+ *
+ * detector
+ * -> scan quality guard
+ * -> optional auto-crop/retry
+ * -> isolated classifier per crop
+ * -> structural recognizer
+ * -> parser
+ *
+ * tetap satu pipeline.
+ */
 @Composable
 fun SymbolAiEffect(
     imageUri: Uri?,
     onSuccess: (SymbolRecognitionResult) -> Unit,
     onError: (Throwable) -> Unit
 ) {
-    val context = LocalContext.current
+    val context =
+        LocalContext.current
 
-    val classifier = remember {
-        Log.d(TAG, "Creating SymbolClassifier...")
+    val recognizer =
+        remember {
+            Log.d(
+                TAG,
+                "Creating FormulaRecognizer..."
+            )
 
-        SymbolClassifier(
-            context = context.applicationContext
-        )
-    }
+            FormulaRecognizer(
+                context =
+                    context.applicationContext
+            )
+        }
 
-    DisposableEffect(classifier) {
+    DisposableEffect(
+        recognizer
+    ) {
         onDispose {
-            Log.d(TAG, "Closing classifier")
-            classifier.close()
+            Log.d(
+                TAG,
+                "Closing FormulaRecognizer"
+            )
+
+            recognizer.close()
         }
     }
 
-    LaunchedEffect(imageUri) {
+    LaunchedEffect(
+        imageUri
+    ) {
+        if (
+            imageUri == null
+        ) {
+            val error =
+                IllegalStateException(
+                    "Tidak ada gambar yang dikirim ke AI."
+                )
 
-        Log.d(TAG, "LaunchedEffect imageUri = $imageUri")
-
-        if (imageUri == null) {
-            val error = IllegalStateException(
-                "Image URI NULL. Tidak ada gambar yang dikirim ke AI."
+            Log.e(
+                TAG,
+                error.message
+                    ?: "Image URI null"
             )
 
-            Log.e(TAG, error.message ?: "URI null")
-            onError(error)
+            onError(
+                error
+            )
 
             return@LaunchedEffect
         }
 
         try {
-            Log.d(TAG, "Starting inference...")
-            Log.d(TAG, "URI = $imageUri")
+            Log.d(
+                TAG,
+                "Starting formula recognition: $imageUri"
+            )
 
-            val result = withContext(Dispatchers.IO) {
-                classifier.classify(
-                    uri = imageUri,
-                    topK = 3
-                )
-            }
+            val result =
+                withContext(
+                    Dispatchers.IO
+                ) {
+                    recognizer.recognize(
+                        uri = imageUri,
+                        topK = 5
+                    )
+                }
 
-            Log.d(TAG, "Inference SUCCESS")
-            Log.d(TAG, "Symbol = ${result.best.display}")
-            Log.d(TAG, "Confidence = ${result.best.confidence}")
-            Log.d(TAG, "Time = ${result.inferenceTimeMs} ms")
+            Log.d(
+                TAG,
+                "Formula recognition SUCCESS"
+            )
 
-            onSuccess(result)
+            Log.d(
+                TAG,
+                "display=${result.structuredDisplay}"
+            )
 
-        } catch (throwable: Throwable) {
+            Log.d(
+                TAG,
+                "latex=${result.structuredLatex}"
+            )
 
+            Log.d(
+                TAG,
+                "symbols=${result.symbols.size}"
+            )
+
+            onSuccess(
+                result
+            )
+
+        } catch (
+            throwable: Throwable
+        ) {
             Log.e(
                 TAG,
-                "Inference FAILED: ${throwable.message}",
+                "Formula recognition FAILED: ${throwable.message}",
                 throwable
             )
 
-            onError(throwable)
+            onError(
+                throwable
+            )
         }
     }
 }
@@ -88,23 +149,31 @@ fun SymbolAiBitmapEffect(
     onSuccess: (SymbolRecognitionResult) -> Unit,
     onError: (Throwable) -> Unit
 ) {
-    val context = LocalContext.current
+    val context =
+        LocalContext.current
 
-    val classifier = remember {
-        SymbolClassifier(
-            context = context.applicationContext
-        )
-    }
+    val recognizer =
+        remember {
+            FormulaRecognizer(
+                context =
+                    context.applicationContext
+            )
+        }
 
-    DisposableEffect(classifier) {
+    DisposableEffect(
+        recognizer
+    ) {
         onDispose {
-            classifier.close()
+            recognizer.close()
         }
     }
 
-    LaunchedEffect(bitmap) {
-
-        if (bitmap == null) {
+    LaunchedEffect(
+        bitmap
+    ) {
+        if (
+            bitmap == null
+        ) {
             onError(
                 IllegalStateException(
                     "Bitmap NULL."
@@ -115,24 +184,32 @@ fun SymbolAiBitmapEffect(
         }
 
         try {
-            val result = withContext(Dispatchers.Default) {
-                classifier.classify(
-                    bitmap = bitmap,
-                    topK = 3
-                )
-            }
+            val result =
+                withContext(
+                    Dispatchers.Default
+                ) {
+                    recognizer.recognize(
+                        bitmap = bitmap,
+                        topK = 5
+                    )
+                }
 
-            onSuccess(result)
+            onSuccess(
+                result
+            )
 
-        } catch (throwable: Throwable) {
-
+        } catch (
+            throwable: Throwable
+        ) {
             Log.e(
                 TAG,
-                "Bitmap inference FAILED",
+                "Bitmap formula recognition FAILED",
                 throwable
             )
 
-            onError(throwable)
+            onError(
+                throwable
+            )
         }
     }
 }

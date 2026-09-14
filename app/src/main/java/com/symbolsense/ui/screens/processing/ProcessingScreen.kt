@@ -22,7 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +40,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.symbolsense.ai.FormulaAiEffect
+import com.symbolsense.ai.ScanQualityException
+import com.symbolsense.ai.ScanQualityReport
+import com.symbolsense.ai.SymbolAiEffect
 import com.symbolsense.ai.SymbolRecognitionResult
 import com.symbolsense.ui.theme.CyanAccent
 import com.symbolsense.ui.theme.GreenSuccess
@@ -52,13 +56,15 @@ private const val TAG = "SymbolSenseAI"
 fun ProcessingScreen(
     imageUri: Uri?,
     onDone: (SymbolRecognitionResult) -> Unit,
-    onError: (Throwable) -> Unit = {}
+    onError: (Throwable) -> Unit = {},
+    onRetake: () -> Unit = {},
+    onAdjustCrop: () -> Unit = {}
 ) {
 
     val steps = listOf(
         "Gambar disiapkan",
-        "Mendeteksi simbol",
-        "Mengenali & menyusun rumus",
+        "Menjalankan model AI",
+        "Simbol dikenali",
         "Menyiapkan hasil"
     )
 
@@ -72,6 +78,10 @@ fun ProcessingScreen(
 
     var errorMessage by remember(imageUri) {
         mutableStateOf<String?>(null)
+    }
+
+    var qualityReport by remember(imageUri) {
+        mutableStateOf<ScanQualityReport?>(null)
     }
 
     /*
@@ -97,6 +107,7 @@ fun ProcessingScreen(
         current = 0
         aiResult = null
         errorMessage = null
+        qualityReport = null
 
         if (imageUri != null) {
 
@@ -112,7 +123,7 @@ fun ProcessingScreen(
      * =========================================================
      */
 
-    FormulaAiEffect(
+    SymbolAiEffect(
         imageUri = imageUri,
 
         onSuccess = { result ->
@@ -129,12 +140,6 @@ fun ProcessingScreen(
                 TAG,
                 "AI RESULT"
             )
-
-            Log.d(TAG, "mode        = ${result.mode}")
-            Log.d(TAG, "symbols     = ${result.symbols.size}")
-            Log.d(TAG, "expression  = ${result.structuredDisplay}")
-            Log.d(TAG, "latex full  = ${result.structuredLatex}")
-            Log.d(TAG, "detector ms = ${result.detectorInferenceTimeMs}")
 
             Log.d(
                 TAG,
@@ -201,8 +206,18 @@ fun ProcessingScreen(
                 throwable
             )
 
+            val scanQualityException =
+                throwable as? ScanQualityException
+
+            qualityReport =
+                scanQualityException
+                    ?.report
+
             errorMessage =
-                throwable.message
+                scanQualityException
+                    ?.report
+                    ?.userMessage
+                    ?: throwable.message
                     ?: "Terjadi kesalahan saat menjalankan AI."
 
             onError(
@@ -267,10 +282,16 @@ fun ProcessingScreen(
         )
 
         Text(
-            text = if (errorMessage == null) {
-                "Menganalisis gambar"
-            } else {
-                "Gagal menganalisis"
+            text = when {
+                qualityReport != null ->
+                    qualityReport!!
+                        .userTitle
+
+                errorMessage != null ->
+                    "Gagal menganalisis"
+
+                else ->
+                    "Menganalisis gambar"
             },
 
             style =
@@ -301,16 +322,15 @@ fun ProcessingScreen(
                                         100f
                                 ).toInt()
 
-                    val count = aiResult!!.symbols.size.coerceAtLeast(1)
-                    if (count == 1) {
-                        "1 simbol dikenali: ${aiResult!!.structuredDisplay} • confidence $confidence%."
-                    } else {
-                        "$count simbol dikenali: ${aiResult!!.structuredDisplay}"
-                    }
+                    "Simbol ${
+                        aiResult!!
+                            .best
+                            .display
+                    } dikenali dengan confidence $confidence%."
                 }
 
                 else -> {
-                    "Menjalankan detector + classifier matematika."
+                    "Menjalankan pengenalan simbol dengan AI."
                 }
             },
 
@@ -441,6 +461,73 @@ fun ProcessingScreen(
                         } else {
                             FontWeight.Normal
                         }
+                )
+            }
+        }
+
+        if (
+            errorMessage != null
+        ) {
+            Spacer(
+                Modifier.height(
+                    22.dp
+                )
+            )
+
+            Button(
+                onClick =
+                    onRetake,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(
+                            48.dp
+                        )
+            ) {
+                Text(
+                    "Ambil ulang foto"
+                )
+            }
+
+            Spacer(
+                Modifier.height(
+                    10.dp
+                )
+            )
+
+            OutlinedButton(
+                onClick =
+                    onAdjustCrop,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(
+                            48.dp
+                        )
+            ) {
+                Text(
+                    "Atur ulang area crop"
+                )
+            }
+
+            qualityReport?.let {
+                report ->
+
+                Spacer(
+                    Modifier.height(
+                        12.dp
+                    )
+                )
+
+                Text(
+                    text =
+                        "Tips: seluruh rumus harus terlihat, kamera sejajar, dan jangan memenuhi seluruh frame.",
+                    style =
+                        MaterialTheme
+                            .typography
+                            .bodySmall,
+                    color =
+                        TextTertiaryLight
                 )
             }
         }

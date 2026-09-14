@@ -68,6 +68,19 @@ fun SymbolSenseNavGraph(
         )
     }
 
+    /*
+     * Simpan gambar sebelum interactive crop.
+     * Jika AI meminta "Atur ulang area crop", user bisa kembali ke gambar
+     * asli, bukan crop yang sudah terlalu sempit.
+     */
+    var originalImageUri by
+    rememberSaveable {
+
+        mutableStateOf<String?>(
+            null
+        )
+    }
+
     var currentAiResult by
     remember {
 
@@ -342,6 +355,9 @@ fun SymbolSenseNavGraph(
                     currentLiveResult =
                         null
 
+                    originalImageUri =
+                        uri.toString()
+
                     currentImageUri =
                         uri.toString()
 
@@ -476,52 +492,32 @@ fun SymbolSenseNavGraph(
 
                     /*
                      * =========================================
-                     * BUILD REAL DETECTED SYMBOL LIST
+                     * SAVE BEST AI CLASS AS DetectedSymbol
                      * =========================================
                      *
-                     * Formula pipeline:
-                     * detector bbox -> classifier -> parser.
+                     * Classifier V2 belum punya detector bbox.
                      *
-                     * If result came from an old isolated call,
-                     * keep the previous full-crop fallback.
+                     * Jadi bbox 0..1 berarti:
+                     *
+                     * "SELURUH CROP INI diklasifikasikan
+                     * sebagai satu simbol."
+                     *
+                     * Ini BUKAN bbox hasil object detector.
                      */
 
-                    val detectedSymbols =
-                        if (result.symbols.isNotEmpty()) {
-
-                            result.symbols.mapIndexed { index, symbol ->
-
-                                DetectedSymbol(
-                                    id = "ai_${index}_${symbol.prediction.id}_$now",
-                                    label = symbol.prediction.name,
-                                    displayGlyph = symbol.prediction.display,
-                                    confidence = symbol.prediction.confidence,
-                                    boundingBox = RelativeBoundingBox(
-                                        left = symbol.boundingBox.left,
-                                        top = symbol.boundingBox.top,
-                                        right = symbol.boundingBox.right,
-                                        bottom = symbol.boundingBox.bottom
-                                    )
-                                )
-                            }
-
-                        } else {
-
-                            listOf(
-                                DetectedSymbol(
-                                    id = "ai_${result.best.id}_$now",
-                                    label = result.best.name,
-                                    displayGlyph = result.best.display,
-                                    confidence = result.best.confidence,
-                                    boundingBox = RelativeBoundingBox(
-                                        0f,
-                                        0f,
-                                        1f,
-                                        1f
-                                    )
-                                )
+                    val detectedSymbol =
+                        DetectedSymbol(
+                            "ai_${result.best.id}_$now",
+                            result.best.name,
+                            result.best.display,
+                            result.best.confidence,
+                            RelativeBoundingBox(
+                                0f,
+                                0f,
+                                1f,
+                                1f
                             )
-                        }
+                        )
 
                     /*
                      * =========================================
@@ -541,16 +537,18 @@ fun SymbolSenseNavGraph(
                                     "Baru saja",
 
                                 rawPreviewText =
-                                    result.structuredDisplay,
+                                    result.best.display,
 
                                 structuredOutput =
-                                    result.structuredDisplay,
+                                    result.best.display,
 
                                 latexOrCode =
-                                    result.structuredLatex,
+                                    result.best.latex,
 
                                 detectedSymbols =
-                                    detectedSymbols,
+                                    listOf(
+                                        detectedSymbol
+                                    ),
 
                                 imageUri =
                                     currentImageUri
@@ -565,7 +563,7 @@ fun SymbolSenseNavGraph(
                     )
 
                     println(
-                        "SYMBOLSENSE FORMULA AI"
+                        "SYMBOLSENSE REAL AI"
                     )
 
                     println(
@@ -573,19 +571,23 @@ fun SymbolSenseNavGraph(
                     )
 
                     println(
-                        "MODE       : ${result.mode}"
+                        "ID         : ${result.best.id}"
                     )
 
                     println(
-                        "SYMBOLS    : ${result.symbols.size}"
+                        "NAME       : ${result.best.name}"
                     )
 
                     println(
-                        "DISPLAY    : ${result.structuredDisplay}"
+                        "DISPLAY    : ${result.best.display}"
                     )
 
                     println(
-                        "LATEX      : ${result.structuredLatex}"
+                        "LATEX      : ${result.best.latex}"
+                    )
+
+                    println(
+                        "CONFIDENCE : ${result.best.confidence}"
                     )
 
                     println(
@@ -593,11 +595,7 @@ fun SymbolSenseNavGraph(
                     )
 
                     println(
-                        "DETECTOR   : ${result.detectorInferenceTimeMs} ms"
-                    )
-
-                    println(
-                        "TOTAL      : ${result.inferenceTimeMs} ms"
+                        "TIME       : ${result.inferenceTimeMs} ms"
                     )
 
                     println(
@@ -636,6 +634,67 @@ fun SymbolSenseNavGraph(
                     println(
                         "========================================"
                     )
+                },
+
+                /*
+                 * Scan gagal karena framing / kualitas:
+                 * kembali ke kamera untuk retake.
+                 */
+                onRetake = {
+
+                    currentAiResult =
+                        null
+
+                    currentLiveResult =
+                        null
+
+                    currentImageUri =
+                        null
+
+                    originalImageUri =
+                        null
+
+                    val popped =
+                        navController
+                            .popBackStack(
+                                Screen.Camera.route,
+                                false
+                            )
+
+                    if (!popped) {
+                        navController.navigate(
+                            Screen.Camera.route
+                        )
+                    }
+                },
+
+                /*
+                 * Kembali ke gambar ASLI sebelum crop.
+                 */
+                onAdjustCrop = {
+
+                    currentAiResult =
+                        null
+
+                    currentLiveResult =
+                        null
+
+                    currentImageUri =
+                        originalImageUri
+                            ?: currentImageUri
+
+                    val popped =
+                        navController
+                            .popBackStack(
+                                Screen.Preview.route,
+                                false
+                            )
+
+                    if (!popped) {
+                        navController.navigate(
+                            Screen.Preview.route
+                        )
+                    }
                 }
             )
         }
@@ -834,6 +893,9 @@ fun SymbolSenseNavGraph(
                                     null
 
                                 currentImageUri =
+                                    null
+
+                                originalImageUri =
                                     null
                             }
                     },
